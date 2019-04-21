@@ -31,23 +31,6 @@ impl AudioCallback for StreamingPlayer {
     type Channel = i16;
 
     fn callback(&mut self, out: &mut [i16]) {
-        if self.stored.load(Ordering::Relaxed) > out.len() * 3 {
-            while let Ok(_) = self.out_receiver.try_recv() {
-                self.stored.store(self.stored.load(Ordering::Relaxed) - 1, Ordering::Relaxed);
 
-                if self.stored.load(Ordering::Relaxed) <= out.len() * 3 {
-                    break;
-                }
-            }
-        }
-
-        for dst in out.iter_mut() {
-            if let Ok(val) = self.out_receiver.try_recv() {
-                self.stored.store((self.stored.load(Ordering::Relaxed) as i64 - 1).max(0) as usize, Ordering::Relaxed);
-                *dst = val / 2; // volume
-            } else {
-                *dst = 0;
-            }
-        }
     }
 }
