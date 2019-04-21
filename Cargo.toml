@@ -1,0 +1,11 @@
+[package]
+name = "enginesound"
+version = "0.1.0"
+authors = ["dasetwas", "Friz64"]
+edition = "2018"
+
+[dependencies]
+# hound = "3.4.0"
+sdl2 = "0.32.2"
+gtk = "0.6"
+byteorder = "1.3.1"
