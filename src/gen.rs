@@ -1,5 +1,62 @@
-use hound::{self, WavSpec};
-use std::f64::consts::PI;
+use lazy_static::*;
+use sdl2::audio::AudioSpec;
+use std::sync::atomic::{AtomicU32, Ordering};
+
+pub const PI: f64 = std::f64::consts::PI;
+pub const PI2: f64 = 2.0f64 * std::f64::consts::PI;
+pub const PI_2: f64 = std::f64::consts::PI / 2.0f64;
+pub const PI_4: f64 = std::f64::consts::PI / 4.0f64;
+
+pub const PI2F: f32 = PI2 as f32;
+
+const POWERS_OF_TEN: [u64; 18] = [
+    1,
+    10,
+    100,
+    1_000,
+    10_000,
+    100_000,
+    1_000_000,
+    10_000_000,
+    100_000_000,
+    1_000_000_000,
+    10_000_000_000,
+    100_000_000_000,
+    1_000_000_000_000,
+    10_000_000_000_000,
+    100_000_000_000_000,
+    1_000_000_000_000_000,
+    10_000_000_000_000_000,
+    100_000_000_000_000_000,
+];
+const SINTABLE_SIZE: usize = 4096;
+const SINTABLE_SIZE_4: usize = SINTABLE_SIZE / 4;
+const SINTABLE_SIZE__2PI: f32 = SINTABLE_SIZE as f32 / PI2 as f32;
+
+lazy_static! {
+    static ref SINTABLE: [f32; SINTABLE_SIZE] = {
+        let mut table = [0f32; SINTABLE_SIZE];
+        let SINTABLE_SIZEf = SINTABLE_SIZE as f64;
+        for i in 0..SINTABLE_SIZE {
+            table[i] = (i as f64 * PI2 / SINTABLE_SIZEf).sin() as f32;
+        }
+        table
+    };
+}
+
+#[inline]
+pub fn fast_sin(x: f32) -> f32 {
+    let a = (x * SINTABLE_SIZE__2PI);
+    let b = a as usize;
+    let c = a % 1.0;
+    SINTABLE[b % SINTABLE_SIZE] * (1.0 - c) + SINTABLE[(b + 1) % SINTABLE_SIZE] * c
+    //SINTABLE[((x % PI2F) * SINTABLE_SIZE__2PI) as usize % SINTABLE_SIZE]
+}
+
+#[inline]
+pub fn fast_cos(x: f32) -> f32 {
+    SINTABLE[(((x % PI2F) * SINTABLE_SIZE__2PI) as usize + SINTABLE_SIZE_4) % SINTABLE_SIZE]
+}
 
 // https://www.researchgate.net/profile/Stefano_Delle_Monache/publication/280086598_Physically_informed_car_engine_sound_synthesis_for_virtual_and_augmented_environments/links/55a791bc08aea2222c746724/Physically-informed-car-engine-sound-synthesis-for-virtual-and-augmented-environments.pdf?origin=publication_detail
 
@@ -9,12 +66,64 @@ use std::f64::consts::PI;
 const IGNITION_SCALE: f64 = 0.1;
 const VOLUME: f32 = 0.3;
 
+pub struct Generator {
+    samples_per_second: u32,
+    engine_params:      EngineParameters,
+}
+
+pub struct EngineParameters {
+    rpm: AtomicU32,
+    /// crankshaft position, not normalized
+    crankshaft_pos: f32,
+    lp: LowPassFilter,
+}
+
+impl Generator {
+    pub(crate) fn new(samples_per_second: u32) -> Generator {
+        Generator {
+            samples_per_second,
+            engine_params: EngineParameters {
+                rpm:            AtomicU32::new(12000.0f32.to_bits()),
+                crankshaft_pos: 0.0,
+                lp:             LowPassFilter::new(0.0, samples_per_second),
+            },
+        }
+    }
+
+    pub(crate) fn generate(&mut self, buf: &mut [f32]) {
+        let len = buf.len() as f32;
+
+        let crankshaft_pos = self.engine_params.crankshaft_pos;
+        let samples_per_second = self.samples_per_second as f32 * 120.0;
+
+        let mut i = 1.0;
+        let mut ii = 0;
+        while ii < buf.len() {
+            self.engine_params.crankshaft_pos = crankshaft_pos + i * self.get_rpm() / samples_per_second;
+            let a = self.gen();
+            buf[ii] = self.engine_params.lp.filter(a);
+            i += 1.0;
+            ii += 1;
+        }
+    }
+
+    fn get_rpm(&self) -> f32 {
+        f32::from_bits(self.engine_params.rpm.load(Ordering::Relaxed))
+    }
+
+    /// generates one sample worth of data
+    fn gen(&mut self) -> f32 {
+        let a = self.engine_params.crankshaft_pos * std::f32::consts::PI * 2.0;
+        fast_sin(a) * 0.5
+    }
+}
+
+/*
+
 fn main() {
-    let spec = hound::WavSpec {
+    let spec = AudioSpecDesired {
         channels: 1, sample_rate: 41000, bits_per_sample: 16, sample_format: hound::SampleFormat::Int
     };
-
-    let mut writer = hound::WavWriter::create("out.wav", spec).unwrap();
 
     let duration = 20.0; //seconds
 
@@ -42,7 +151,7 @@ fn main() {
 
         writer.write_sample((sample * amplitude) as i16).unwrap();
     }
-}
+}*/
 
 struct WaveGuide {
     // goes from x0 to x1
@@ -120,7 +229,7 @@ struct LowPassFilter {
 impl LowPassFilter {
     pub fn new(freq: f32, samples_per_second: u32) -> LowPassFilter {
         LowPassFilter {
-            last_samples: LoopBuffer::new(0.0f32, (samples_per_second as f32 / freq) as usize),
+            last_samples: LoopBuffer::new(0.0f32, ((samples_per_second as f32 / freq) as u32).min(samples_per_second).max(1) as usize),
             samples_per_second,
         }
     }
@@ -161,8 +270,8 @@ impl DelayChamber {
     }
 }
 
-fn get_length(spec: &WavSpec, seconds: f64) -> u32 {
-    (seconds * spec.channels as f64 * spec.bits_per_sample as f64 / 16.0 * spec.sample_rate as f64) as u32
+fn get_length(spec: &AudioSpec, seconds: f64) -> u32 {
+    (seconds * spec.channels as f64 * spec.freq as f64) as u32
 }
 
 fn get_phasor_freq(rpm: f64) -> f64 {

@@ -1,0 +1,10 @@
+/target
+**/*.rs.bk
+sdlsetup.txt
+/.idea
+/.vscode
+Cargo.lock
+enginesound.iml
+out.wav
+SDL2.dll
+/win_sdl_libs
