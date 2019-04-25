@@ -1,12 +1,18 @@
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::gen::Generator;
 use parking_lot::Mutex;
 use sdl2::{self,
-           audio::{AudioCallback, AudioSpecDesired}};
+           audio::{AudioCallback, AudioDevice, AudioSpecDesired}};
 use std::sync::Arc;
 
-pub fn init(gen: Arc<Mutex<Generator>>, sample_rate: u32) -> Result<(), String> {
+pub struct Audio {
+    /// only kept to keep the sound system alive
+    #[allow(unused)]
+    player: AudioDevice<StreamingPlayer>,
+}
+
+pub fn init(gen: Arc<Mutex<Generator>>, sample_rate: u32) -> Result<Audio, String> {
     let sdl_context = sdl2::init()?;
     let audio_subsystem = sdl_context.audio()?;
 
@@ -14,7 +20,7 @@ pub fn init(gen: Arc<Mutex<Generator>>, sample_rate: u32) -> Result<(), String> 
         freq: Some(sample_rate as i32), channels: Some(1), samples: None
     };
 
-    let mut out_device = audio_subsystem.open_playback(None, &desired_spec, |spec| {
+    let out_device = audio_subsystem.open_playback(None, &desired_spec, |spec| {
         if sample_rate == spec.freq as u32 {
             StreamingPlayer {
                 gen,
@@ -42,12 +48,10 @@ pub fn init(gen: Arc<Mutex<Generator>>, sample_rate: u32) -> Result<(), String> 
         spec.samples
     );
 
-    std::thread::sleep(Duration::from_secs(100));
-
-    Ok(())
+    Ok(Audio {
+        player: out_device
+    })
 }
-
-const I16_MAX: f32 = std::i16::MAX as f32;
 
 struct StreamingPlayer {
     gen:       Arc<Mutex<Generator>>,

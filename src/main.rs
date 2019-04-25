@@ -1,26 +1,146 @@
 #![feature(proc_macro_hygiene)]
 
-use gtk::Builder;
+use crate::gen::{Cylinder, Engine, LowPassFilter, WaveGuide};
 use parking_lot::Mutex;
-use std::sync::Arc;
+use rand_core::SeedableRng;
+use rand_xorshift::XorShiftRng;
+use std::{sync::{atomic::AtomicU32, Arc},
+          time::SystemTime};
 
 mod audio;
 mod gen;
+mod gui;
+
+use glium::Surface;
+mod support;
 
 /// recommended 48000hz, as any other freq produced whining for me
 const SAMPLE_RATE: u32 = 48000;
+const WINDOW_WIDTH: f64 = 800.0;
+const WINDOW_HEIGHT: f64 = 500.0;
 
 fn main() {
-    let application = gtk::Application::new("dasetwas.enginesound", Default::default()).expect("Failed to initialize GTK Application");
+    let num_cylinders = 2;
+    let mut cylinders = Vec::with_capacity(num_cylinders);
 
-    // sound generator
-    let generator = Arc::new(Mutex::new(gen::Generator::new(SAMPLE_RATE)));
-
-    match audio::init(generator.clone(), SAMPLE_RATE) {
-        Ok(_) => (),
-        Err(e) => println!("Failed to initialize audio {}", e),
+    /// converts a given amount of time into samples
+    fn seconds_to_samples(seconds: f32) -> usize {
+        (seconds * SAMPLE_RATE as f32).max(1.0) as usize
     }
 
-    let glade_src = include_str!("gui.glade");
-    let builder = Builder::new_from_string(glade_src);
+    let speed_of_sound = 343.0; // m/s
+
+    for i in 0..num_cylinders {
+        cylinders.push(Cylinder {
+            crank_offset: i as f32 / num_cylinders as f32,
+            // alpha is set while running, exhaust_openside_refl: 0.1
+            exhaust_waveguide: WaveGuide::new(seconds_to_samples(0.7 / speed_of_sound), -1000.0, 0.1),
+            // alpha is set while running, beta is intake_openside_refl:  -0.5
+            intake_waveguide: WaveGuide::new(seconds_to_samples(0.7 / speed_of_sound), -1000.0, -0.5),
+            //
+            extractor_waveguide: WaveGuide::new(seconds_to_samples(1.0 / speed_of_sound), -0.8, -0.8),
+            intake_open_refl:    -0.98,
+            intake_closed_refl:  1.0,
+            exhaust_open_refl:   -0.98,
+            exhaust_closed_refl: 1.0,
+
+            piston_motion_factor: 0.6,
+            ignition_factor:      1.9,
+            ignition_time:        0.6,
+
+            // running values
+            cyl_pressure:      0.0,
+            extractor_exhaust: 0.0,
+        });
+    }
+
+    let engine: Engine = Engine {
+        rpm: AtomicU32::new((1400.0_f32).to_bits()),
+        /// crankshaft position, 0.0-1.0
+        crankshaft_pos: 0.0,
+        cylinders,
+        exhaust_pipe: WaveGuide::new(seconds_to_samples(3.0 / speed_of_sound), -0.8, -0.8),
+        intake_noise: XorShiftRng::from_seed(unsafe {
+            std::mem::transmute::<u128, [u8; 16]>(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos())
+        }),
+        intake_noise_factor: 0.6,
+        intake_lp_filter: LowPassFilter::new(2000.0, SAMPLE_RATE),
+        engine_vibration_filter: LowPassFilter::new(80.0, SAMPLE_RATE),
+
+        // running values
+        exhaust_collector: 0.0,
+    };
+
+    // sound generator
+    let generator = Arc::new(Mutex::new(gen::Generator::new(SAMPLE_RATE, engine)));
+
+    let audio = match audio::init(generator.clone(), SAMPLE_RATE) {
+        Ok(audio) => audio,
+        Err(e) => panic!("Failed to initialize audio {}", e),
+    };
+
+    // GUI
+    {
+        // Build the window.
+        let mut events_loop = glium::glutin::EventsLoop::new();
+        let window = glium::glutin::WindowBuilder::new()
+            .with_resizable(false)
+            .with_title("Engine Sound Generator")
+            .with_dimensions((WINDOW_WIDTH, WINDOW_HEIGHT).into());
+        let context = glium::glutin::ContextBuilder::new().with_vsync(true).with_multisampling(4);
+        let display = glium::Display::new(window, context, &events_loop).unwrap();
+        let display = support::GliumDisplayWinitWrapper(display);
+
+        let mut ui = conrod_core::UiBuilder::new([WINDOW_WIDTH, WINDOW_HEIGHT * 2.0]).theme(gui::theme()).build();
+        let ids = gui::Ids::new(ui.widget_id_generator());
+
+        ui.fonts.insert_from_file("fonts/NotoSans/NotoSans-Regular.ttf").unwrap();
+
+        let mut renderer = conrod_glium::Renderer::new(&display.0).unwrap();
+
+        let image_map = conrod_core::image::Map::<glium::texture::Texture2d>::new();
+
+        let mut event_loop = support::EventLoop::new();
+        'main: loop {
+            for event in event_loop.next(&mut events_loop) {
+                if let Some(event) = conrod_winit::convert_event(event.clone(), &display) {
+                    ui.handle_event(event);
+                    event_loop.needs_update();
+                }
+
+                match event {
+                    glium::glutin::Event::WindowEvent {
+                        event, ..
+                    } => {
+                        match event {
+                            // Break from the loop upon `Escape`.
+                            glium::glutin::WindowEvent::CloseRequested
+                            | glium::glutin::WindowEvent::KeyboardInput {
+                                input:
+                                    glium::glutin::KeyboardInput {
+                                        virtual_keycode: Some(glium::glutin::VirtualKeyCode::Escape), ..
+                                    },
+                                ..
+                            } => break 'main,
+                            _ => (),
+                        }
+                    },
+                    _ => (),
+                }
+            }
+
+            gui::gui(&mut ui.set_widgets(), &ids, generator.clone());
+
+            if let Some(primitives) = ui.draw_if_changed() {
+                renderer.fill(&display.0, primitives, &image_map);
+                let mut target = display.0.draw();
+                target.clear_color(0.0, 0.0, 0.0, 1.0);
+                renderer.draw(&display.0, &mut target, &image_map).unwrap();
+                target.finish().unwrap();
+            }
+        }
+    }
+
+    // audio lives until here
+    std::mem::drop(audio);
 }
