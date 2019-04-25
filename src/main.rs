@@ -1,3 +1,5 @@
+#![feature(proc_macro_hygiene)]
+
 use gtk::Builder;
 use parking_lot::Mutex;
 use std::sync::Arc;

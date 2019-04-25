@@ -2,34 +2,15 @@ use lazy_static::*;
 use sdl2::audio::AudioSpec;
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use simdeez::{avx2::*, scalar::*, sse2::*, sse41::*, *};
+
 pub const PI: f64 = std::f64::consts::PI;
 pub const PI2: f64 = 2.0f64 * std::f64::consts::PI;
 pub const PI_2: f64 = std::f64::consts::PI / 2.0f64;
 pub const PI_4: f64 = std::f64::consts::PI / 4.0f64;
-
 pub const PI2F: f32 = PI2 as f32;
 
-const POWERS_OF_TEN: [u64; 18] = [
-    1,
-    10,
-    100,
-    1_000,
-    10_000,
-    100_000,
-    1_000_000,
-    10_000_000,
-    100_000_000,
-    1_000_000_000,
-    10_000_000_000,
-    100_000_000_000,
-    1_000_000_000_000,
-    10_000_000_000_000,
-    100_000_000_000_000,
-    1_000_000_000_000_000,
-    10_000_000_000_000_000,
-    100_000_000_000_000_000,
-];
-const SINTABLE_SIZE: usize = 4096;
+const SINTABLE_SIZE: usize = 128;
 const SINTABLE_SIZE_4: usize = SINTABLE_SIZE / 4;
 const SINTABLE_SIZE__2PI: f32 = SINTABLE_SIZE as f32 / PI2 as f32;
 
@@ -46,7 +27,7 @@ lazy_static! {
 
 #[inline]
 pub fn fast_sin(x: f32) -> f32 {
-    let a = (x * SINTABLE_SIZE__2PI);
+    let a = x * SINTABLE_SIZE__2PI;
     let b = a as usize;
     let c = a % 1.0;
     SINTABLE[b % SINTABLE_SIZE] * (1.0 - c) + SINTABLE[(b + 1) % SINTABLE_SIZE] * c
@@ -55,7 +36,11 @@ pub fn fast_sin(x: f32) -> f32 {
 
 #[inline]
 pub fn fast_cos(x: f32) -> f32 {
-    SINTABLE[(((x % PI2F) * SINTABLE_SIZE__2PI) as usize + SINTABLE_SIZE_4) % SINTABLE_SIZE]
+    let a = x * SINTABLE_SIZE__2PI;
+    let b = a as usize + SINTABLE_SIZE_4;
+    let c = a % 1.0;
+    SINTABLE[b % SINTABLE_SIZE] * (1.0 - c) + SINTABLE[(b + 1) % SINTABLE_SIZE] * c
+    //SINTABLE[(((x % PI2F) * SINTABLE_SIZE__2PI) as usize + SINTABLE_SIZE_4) % SINTABLE_SIZE]
 }
 
 // https://www.researchgate.net/profile/Stefano_Delle_Monache/publication/280086598_Physically_informed_car_engine_sound_synthesis_for_virtual_and_augmented_environments/links/55a791bc08aea2222c746724/Physically-informed-car-engine-sound-synthesis-for-virtual-and-augmented-environments.pdf?origin=publication_detail
@@ -85,7 +70,7 @@ impl Generator {
             engine_params: EngineParameters {
                 rpm:            AtomicU32::new(12000.0f32.to_bits()),
                 crankshaft_pos: 0.0,
-                lp:             LowPassFilter::new(0.0, samples_per_second),
+                lp:             LowPassFilter::new(90.0, samples_per_second),
             },
         }
     }
@@ -99,7 +84,7 @@ impl Generator {
         let mut i = 1.0;
         let mut ii = 0;
         while ii < buf.len() {
-            self.engine_params.crankshaft_pos = crankshaft_pos + i * self.get_rpm() / samples_per_second;
+            self.engine_params.crankshaft_pos = (crankshaft_pos + i * self.get_rpm() / samples_per_second) % 1.0;
             let a = self.gen();
             buf[ii] = self.engine_params.lp.filter(a);
             i += 1.0;
@@ -192,6 +177,7 @@ impl WaveGuide {
 
 #[derive(Clone)]
 struct LoopBuffer<T> {
+    len:      usize,
     pub data: Vec<T>,
     pos:      usize,
 }
@@ -199,22 +185,45 @@ struct LoopBuffer<T> {
 impl<T> LoopBuffer<T>
 where T: Clone
 {
-    pub fn new(initial_value: T, size: usize) -> LoopBuffer<T> {
+    /// Creates a new loop buffer with specifies length.
+    /// The internal sample buffer size is rounded up to the currently best SIMD implementation's float vector size.
+    pub fn new(initial_value: T, len: usize) -> LoopBuffer<T> {
+        simd_runtime_generate!(
+            fn get_best_simd_size(size: usize) -> usize {
+                ((size - 1) / S::VF32_WIDTH + 1) * S::VF32_WIDTH
+            }
+        );
+        let bufsize = get_best_simd_size_runtime_select(len);
         LoopBuffer {
-            data: std::iter::repeat(initial_value).take(size).collect(), pos: 0
+            len,
+            data: std::iter::repeat(initial_value).take(bufsize).collect(),
+            pos: 0,
         }
     }
 
+    /// Sets the value at the current position. Must be called with `pop`.
+    /// ```rust
+    /// // assuming SIMD is in scalar mode
+    /// let mut lb = LoopBuffer::new(2);
+    /// lb.push(1.0);
+    /// lb.advance();
+    ///
+    /// assert_eq(lb.pop(), 1.0);
+    ///
+    /// ```
     pub fn push(&mut self, value: T) {
-        let len = self.data.len();
+        let len = self.len;
         self.data[self.pos % len] = value;
     }
 
+    /// Gets the value `self.len` samples prior. Must be called with `push`.
+    /// See `push` for examples
     pub fn pop(&mut self) -> T {
-        let len = self.data.len();
+        let len = self.len;
         self.data[(self.pos + 1) % len].clone()
     }
 
+    /// Advances the position of this loop buffer.
     pub fn advance(&mut self) {
         self.pos += 1;
     }
@@ -222,31 +231,42 @@ where T: Clone
 
 #[derive(Clone)]
 struct LowPassFilter {
-    last_samples:       LoopBuffer<f32>,
+    samples:            LoopBuffer<f32>,
     samples_per_second: u32,
 }
 
 impl LowPassFilter {
     pub fn new(freq: f32, samples_per_second: u32) -> LowPassFilter {
         LowPassFilter {
-            last_samples: LoopBuffer::new(0.0f32, ((samples_per_second as f32 / freq) as u32).min(samples_per_second).max(1) as usize),
+            samples: LoopBuffer::new(0.0f32, ((samples_per_second as f32 / freq) as u32).min(samples_per_second).max(1) as usize),
             samples_per_second,
         }
     }
 
     pub fn filter(&mut self, sample: f32) -> f32 {
-        self.last_samples.push(sample);
-        self.last_samples.pop();
-        self.last_samples.advance();
+        self.samples.push(sample);
+        self.samples.advance();
 
-        let mut sum: f32 = 0.0;
-        let mut i = 0;
-        let len = self.last_samples.data.len();
-        while i != len {
-            sum += self.last_samples.data[i];
-            i += 1;
+        unsafe {
+            simd_runtime_generate!(
+                fn sum(samples: &[f32]) -> f32 {
+                    let mut i = S::VF32_WIDTH;
+                    let len = samples.len();
+                    assert_eq!(len % S::VF32_WIDTH, 0, "LoopBuffer length is not a multiple of the SIMD vector size");
+
+                    // rolling sum
+                    let mut sum = S::loadu_ps(&samples[0]);
+
+                    while i != len {
+                        sum += S::loadu_ps(&samples[i]);
+                        i += S::VF32_WIDTH;
+                    }
+                    S::horizontal_add_ps(sum) / len as f32
+                }
+            );
+
+            sum_runtime_select(&self.samples.data)
         }
-        sum / len as f32
     }
 }
 
