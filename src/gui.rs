@@ -52,11 +52,11 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<Mutex<Generat
 
     const PAD: conrod_core::Scalar = 20.0;
 
-    widget::Canvas::new().pad(PAD).pad_right(PAD + 20.0).scroll_kids_vertically().set(ids.canvas, ui);
+    widget::Canvas::new().pad(PAD).pad_right(PAD + 20.0).pad_top(PAD - 10.0).scroll_kids_vertically().set(ids.canvas, ui);
 
     widget::Text::new("Engine Sound Generator").font_size(24).down(7.0).top_left_with_margin(PAD).w(ui.window_dim()[0] - PAD * 2.0).set(ids.title, ui);
 
-    widget::Text::new(format!("Current sampler duty: {:.2}%", f32::from_bits(generator.sampler_duty.load(Ordering::Relaxed))).as_str())
+    widget::Text::new(format!("Current sampler duty: {:.2}%", f32::from_bits(generator.sampler_duty.load(Ordering::Relaxed)) * 100.0).as_str())
         .down(7.0)
         .set(ids.duty_display, ui);
 

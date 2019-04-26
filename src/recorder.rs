@@ -28,7 +28,7 @@ impl Recorder {
                 let mut wav_writer = match hound::WavWriter::new(
                     File::create(filename.as_str()).unwrap_or_else(|e| panic!("Failed to create/open a file for writing the WAV: {}", e)),
                     WavSpec {
-                        channels: 1, sample_rate: crate::SAMPLE_RATE, bits_per_sample: 32, sample_format: SampleFormat::Float
+                        channels: 1, sample_rate: crate::SAMPLE_RATE, bits_per_sample: 16, sample_format: SampleFormat::Int
                     },
                 ) {
                     Ok(wav_writer) => wav_writer,
@@ -38,7 +38,7 @@ impl Recorder {
                 while running.load(Ordering::Relaxed) {
                     match recv.recv() {
                         Ok(samples) => {
-                            samples.iter().for_each(|sample| wav_writer.write_sample(*sample).unwrap());
+                            samples.iter().for_each(|sample| wav_writer.write_sample((*sample * std::i16::MAX as f32) as i16).unwrap());
                         },
                         Err(_) => break,
                     }
@@ -47,7 +47,7 @@ impl Recorder {
                 println!("Stopped recording, finishing writing WAV..");
 
                 while let Ok(samples) = recv.try_recv() {
-                    samples.iter().for_each(|sample| wav_writer.write_sample(*sample).unwrap());
+                    samples.iter().for_each(|sample| wav_writer.write_sample((*sample * std::i16::MAX as f32) as i16).unwrap());
                 }
 
                 wav_writer.flush().unwrap();

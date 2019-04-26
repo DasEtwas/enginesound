@@ -1,6 +1,6 @@
 #![feature(proc_macro_hygiene)]
 
-use crate::gen::{Cylinder, Engine, LowPassFilter, WaveGuide};
+use crate::gen::{Cylinder, Engine, LowPassFilter, Muffler, WaveGuide};
 use parking_lot::Mutex;
 use rand_core::SeedableRng;
 use rand_xorshift::XorShiftRng;
@@ -19,9 +19,10 @@ mod support;
 const SAMPLE_RATE: u32 = 48000;
 const WINDOW_WIDTH: f64 = 800.0;
 const WINDOW_HEIGHT: f64 = 500.0;
+const DC_OFFSET_LP_FREQ: f32 = 4.0; // the frequency of the low pass filter which is subtracted from all samples to reduce dc offset and thus clipping
 
 fn main() {
-    let num_cylinders = 3;
+    let num_cylinders = 1;
     let mut cylinders = Vec::with_capacity(num_cylinders);
 
     /// converts a given amount of time into samples
@@ -45,9 +46,10 @@ fn main() {
             exhaust_open_refl:   -0.98,
             exhaust_closed_refl: 1.0,
 
-            piston_motion_factor: 0.6,
-            ignition_factor:      1.9,
-            ignition_time:        0.6,
+            piston_motion_factor:     0.6,
+            ignition_factor:          1.9,
+            ignition_time:            0.6,
+            crankshaft_flucuation_lp: LowPassFilter::new(350.0, SAMPLE_RATE),
 
             // running values
             cyl_pressure:      0.0,
@@ -67,13 +69,22 @@ fn main() {
         intake_noise_factor: 0.6,
         intake_lp_filter: LowPassFilter::new(2000.0, SAMPLE_RATE),
         engine_vibration_filter: LowPassFilter::new(30.0, SAMPLE_RATE),
-
+        muffler: Muffler {
+            muffler_elements: [
+                WaveGuide::new(seconds_to_samples(0.05 / speed_of_sound), -0.5, -0.5),
+                WaveGuide::new(seconds_to_samples(0.15 / speed_of_sound), -0.5, -0.5),
+                WaveGuide::new(seconds_to_samples(0.35 / speed_of_sound), -0.5, -0.5),
+                WaveGuide::new(seconds_to_samples(0.48 / speed_of_sound), -0.5, -0.5),
+            ],
+            straight_pipe:    WaveGuide::new(seconds_to_samples(3.0 / speed_of_sound), -0.2, -0.2),
+        },
+        crankshaft_fluctuation: 0.17,
         // running values
         exhaust_collector: 0.0,
     };
 
     // sound generator
-    let generator = Arc::new(Mutex::new(gen::Generator::new(SAMPLE_RATE, engine)));
+    let generator = Arc::new(Mutex::new(gen::Generator::new(SAMPLE_RATE, engine, LowPassFilter::new(DC_OFFSET_LP_FREQ, SAMPLE_RATE))));
 
     let audio = match audio::init(generator.clone(), SAMPLE_RATE) {
         Ok(audio) => audio,
