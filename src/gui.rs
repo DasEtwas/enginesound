@@ -1,8 +1,9 @@
-use crate::gen::Generator;
+use crate::{gen::Generator, recorder::Recorder};
+use chrono::{Datelike, Local, Timelike};
 use conrod_core::{position::{Align, Direction, Padding, Relative},
                   *};
 use parking_lot::Mutex;
-use std::sync::Arc;
+use std::sync::{atomic::Ordering, Arc};
 
 /// A set of reasonable stylistic defaults that works for the `gui` below.
 pub fn theme() -> conrod_core::Theme {
@@ -33,8 +34,10 @@ widget_ids! {
         canvas,
         // The title and introduction widgets.
         title,
-        introduction,
+        duty_display,
         canvas_scrollbar,
+        record_button,
+        reset_button,
         engine_rpm_slider,
                engine_master_volume_slider,
         engine_intake_volume_slider,
@@ -45,13 +48,52 @@ widget_ids! {
 
 /// Instantiate a GUI demonstrating every widget available in conrod.
 pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<Mutex<Generator>>) {
-    let generator = generator.lock();
+    let mut generator = generator.lock();
 
-    const PAD: conrod_core::Scalar = 30.0;
+    const PAD: conrod_core::Scalar = 20.0;
 
-    widget::Canvas::new().pad(PAD).scroll_kids_vertically().set(ids.canvas, ui);
+    widget::Canvas::new().pad(PAD).pad_right(PAD + 20.0).scroll_kids_vertically().set(ids.canvas, ui);
 
-    widget::Text::new("Engine Sound Generator").font_size(24).top_left().set(ids.title, ui);
+    widget::Text::new("Engine Sound Generator").font_size(24).down(7.0).top_left_with_margin(PAD).w(ui.window_dim()[0] - PAD * 2.0).set(ids.title, ui);
+
+    widget::Text::new(format!("Current sampler duty: {:.2}%", f32::from_bits(generator.sampler_duty.load(Ordering::Relaxed))).as_str())
+        .down(7.0)
+        .set(ids.duty_display, ui);
+
+    {
+        let (button_label, remove_recorder) = match &mut generator.recorder {
+            None => ("Start recording".to_string(), false),
+            Some(recorder) => {
+                if recorder.is_running() {
+                    ui.needs_redraw();
+                    (format!("Stop recording [{:.3} sec recorded]", recorder.get_len() as f32 / crate::SAMPLE_RATE as f32), false)
+                } else {
+                    ("Start recording".to_string(), true)
+                }
+            },
+        };
+
+        if remove_recorder {
+            generator.recorder = None;
+        }
+
+        for _press in widget::Button::new().label(button_label.as_str()).down(7.0).set(ids.record_button, ui) {
+            match &mut generator.recorder {
+                None => {
+                    generator.recorder = Some(Recorder::new(recording_name()));
+                },
+                Some(recorder) => {
+                    recorder.stop();
+                },
+            }
+        }
+    }
+
+    {
+        for _press in widget::Button::new().label("Reset sampler").down(5.0).set(ids.reset_button, ui) {
+            generator.reset();
+        }
+    }
 
     {
         let prev_val = generator.get_rpm();
@@ -178,4 +220,10 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<Mutex<Generat
     }
 
     widget::Scrollbar::y_axis(ids.canvas).auto_hide(false).set(ids.canvas_scrollbar, ui);
+}
+
+fn recording_name() -> String {
+    let time = Local::now();
+
+    format!("enginesound_{:02}{:02}{:04}-{:02}{:02}{:02}.wav", time.day(), time.month(), time.year(), time.hour(), time.minute(), time.second())
 }

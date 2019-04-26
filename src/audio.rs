@@ -4,7 +4,7 @@ use crate::gen::Generator;
 use parking_lot::Mutex;
 use sdl2::{self,
            audio::{AudioCallback, AudioDevice, AudioSpecDesired}};
-use std::sync::Arc;
+use std::sync::{atomic::Ordering, Arc};
 
 pub struct Audio {
     /// only kept to keep the sound system alive
@@ -65,18 +65,13 @@ impl AudioCallback for StreamingPlayer {
 
     fn callback(&mut self, out: &mut [f32]) {
         let start_time = Instant::now();
-        self.gen.lock().generate(out);
+        let mut gen = self.gen.lock();
+        gen.generate(out);
+
         self.lastnanos = Instant::now().duration_since(start_time).as_nanos();
         self.nanos += self.lastnanos;
         self.counter += out.len() as u32;
 
-        // print avg computation time every 10 seconds
-        if self.counter % (crate::SAMPLE_RATE / out.len() as u32 * 2) == 0 {
-            println!(
-                "{:.5} us/sample\t| {:.1}% duty",
-                self.nanos as f64 / self.counter as f64 * 1E-3,
-                self.lastnanos as f64 / out.len() as f64 / (1E9 / crate::SAMPLE_RATE as f64) * 100.0
-            );
-        }
+        gen.sampler_duty.store((self.lastnanos as f32 / out.len() as f32 / (1E9 / crate::SAMPLE_RATE as f32)).to_bits(), Ordering::Relaxed);
     }
 }

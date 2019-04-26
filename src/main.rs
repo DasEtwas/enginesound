@@ -10,6 +10,7 @@ use std::{sync::{atomic::AtomicU32, Arc},
 mod audio;
 mod gen;
 mod gui;
+mod recorder;
 
 use glium::Surface;
 mod support;
@@ -20,7 +21,7 @@ const WINDOW_WIDTH: f64 = 800.0;
 const WINDOW_HEIGHT: f64 = 500.0;
 
 fn main() {
-    let num_cylinders = 2;
+    let num_cylinders = 3;
     let mut cylinders = Vec::with_capacity(num_cylinders);
 
     /// converts a given amount of time into samples
@@ -65,7 +66,7 @@ fn main() {
         }),
         intake_noise_factor: 0.6,
         intake_lp_filter: LowPassFilter::new(2000.0, SAMPLE_RATE),
-        engine_vibration_filter: LowPassFilter::new(80.0, SAMPLE_RATE),
+        engine_vibration_filter: LowPassFilter::new(30.0, SAMPLE_RATE),
 
         // running values
         exhaust_collector: 0.0,
@@ -102,10 +103,10 @@ fn main() {
 
         let mut event_loop = support::EventLoop::new();
         'main: loop {
+            event_loop.needs_update();
             for event in event_loop.next(&mut events_loop) {
                 if let Some(event) = conrod_winit::convert_event(event.clone(), &display) {
                     ui.handle_event(event);
-                    event_loop.needs_update();
                 }
 
                 match event {

@@ -5,8 +5,10 @@ authors = ["dasetwas", "Friz64"]
 edition = "2018"
 
 [dependencies]
-# saving sound files #
+# recording #
 hound = "3.4.0"
+crossbeam = "0.7.1"
+chrono = "0.4.6"
 
 # misc #
 parking_lot = "0.7.1"

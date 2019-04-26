@@ -5,6 +5,7 @@
 //! it's output worked upon and then new input samples are `push`ed.
 //!
 
+use crate::recorder::Recorder;
 use rand_core::RngCore;
 use rand_xorshift::XorShiftRng;
 use simdeez::{avx2::*, scalar::*, sse2::*, sse41::*, *};
@@ -16,6 +17,8 @@ pub const PI4F: f32 = 4.0 * std::f32::consts::PI;
 // https://www.researchgate.net/profile/Stefano_Delle_Monache/publication/280086598_Physically_informed_car_engine_sound_synthesis_for_virtual_and_augmented_environments/links/55a791bc08aea2222c746724/Physically-informed-car-engine-sound-synthesis-for-virtual-and-augmented-environments.pdf?origin=publication_detail
 
 pub struct Generator {
+    pub sampler_duty:         AtomicU32,
+    pub recorder:             Option<Recorder>,
     volume:                   AtomicU32,
     intake_volume:            AtomicU32,
     exhaust_volume:           AtomicU32,
@@ -78,6 +81,7 @@ pub struct Cylinder {
 impl Cylinder {
     /// takes in the current exhaust collector pressure
     /// returns intake, exhaust, piston + ignition values
+    #[inline]
     pub(in crate::gen) fn pop(&mut self, crank_pos: f32, exhaust_collector: f32) -> (f32, f32, f32) {
         let crank = (crank_pos + self.crank_offset) % 1.0;
 
@@ -114,6 +118,8 @@ impl Cylinder {
 impl Generator {
     pub(crate) fn new(samples_per_second: u32, engine: Engine) -> Generator {
         Generator {
+            sampler_duty: AtomicU32::new((0.0_f32).to_bits()),
+            recorder: None,
             volume: AtomicU32::new((0.2_f32).to_bits()),
             intake_volume: AtomicU32::new((0.333_f32).to_bits()),
             exhaust_volume: AtomicU32::new((0.333_f32).to_bits()),
@@ -136,44 +142,69 @@ impl Generator {
             i += 1.0;
             ii += 1;
         }
+
+        if let Some(recorder) = &mut self.recorder {
+            recorder.record(buf.to_vec());
+        }
     }
 
+    pub fn reset(&mut self) {
+        for cyl in self.engine.cylinders.iter_mut() {
+            cyl.exhaust_waveguide.chamber0.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
+            cyl.exhaust_waveguide.chamber1.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
+            cyl.intake_waveguide.chamber0.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
+            cyl.intake_waveguide.chamber1.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
+            cyl.extractor_waveguide.chamber0.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
+            cyl.extractor_waveguide.chamber1.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
+        }
+    }
+
+    #[inline]
     pub fn get_rpm(&self) -> f32 {
         f32::from_bits(self.engine.rpm.load(Ordering::Relaxed))
     }
 
+    #[inline]
     pub fn set_rpm(&self, rpm: f32) {
         self.engine.rpm.store(rpm.to_bits(), Ordering::Relaxed)
     }
 
+    #[inline]
     pub fn get_volume(&self) -> f32 {
         f32::from_bits(self.volume.load(Ordering::Relaxed))
     }
 
+    #[inline]
     pub fn set_volume(&self, volume: f32) {
         self.volume.store(volume.to_bits(), Ordering::Relaxed)
     }
 
+    #[inline]
     pub fn set_intake_volume(&self, intake_volume: f32) {
         self.intake_volume.store(intake_volume.to_bits(), Ordering::Relaxed)
     }
 
+    #[inline]
     pub fn get_intake_volume(&self) -> f32 {
         f32::from_bits(self.intake_volume.load(Ordering::Relaxed))
     }
 
+    #[inline]
     pub fn set_exhaust_volume(&self, exhaust_volume: f32) {
         self.exhaust_volume.store(exhaust_volume.to_bits(), Ordering::Relaxed)
     }
 
+    #[inline]
     pub fn get_exhaust_volume(&self) -> f32 {
         f32::from_bits(self.exhaust_volume.load(Ordering::Relaxed))
     }
 
+    #[inline]
     pub fn set_engine_vibrations_volume(&self, engine_vibrations_volume: f32) {
         self.engine_vibrations_volume.store(engine_vibrations_volume.to_bits(), Ordering::Relaxed)
     }
 
+    #[inline]
     pub fn get_engine_vibrations_volume(&self) -> f32 {
         f32::from_bits(self.engine_vibrations_volume.load(Ordering::Relaxed))
     }
