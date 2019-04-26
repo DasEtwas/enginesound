@@ -7,6 +7,9 @@ based on [this paper](https://www.researchgate.net/publication/280086598_Physica
 
 ## Building ##
 
+First, you will need to have SDL2 installed properly.
+[Instructions on how to install SDL](https://github.com/Rust-SDL2/rust-sdl2#linux)
+
 This project uses nightly Rust builds.
 
 If you use rustup, you may switch to nightly using this command:
@@ -21,6 +24,7 @@ To run the application, simply use
 ```
 cargo run --release
 ```
+
 
 ## Licensing ##
 
