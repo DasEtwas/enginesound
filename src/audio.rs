@@ -1,10 +1,10 @@
 use std::time::Instant;
 
 use crate::gen::Generator;
-use parking_lot::Mutex;
+use parking_lot::RwLock;
 use sdl2::{self,
            audio::{AudioCallback, AudioDevice, AudioSpecDesired}};
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::Arc;
 
 pub struct Audio {
     /// only kept to keep the sound system alive
@@ -12,12 +12,12 @@ pub struct Audio {
     player: AudioDevice<StreamingPlayer>,
 }
 
-pub fn init(gen: Arc<Mutex<Generator>>, sample_rate: u32) -> Result<Audio, String> {
+pub fn init(gen: Arc<RwLock<Generator>>, sample_rate: u32) -> Result<Audio, String> {
     let sdl_context = sdl2::init()?;
     let audio_subsystem = sdl_context.audio()?;
 
     let desired_spec = AudioSpecDesired {
-        freq: Some(sample_rate as i32), channels: Some(1), samples: None
+        freq: Some(sample_rate as i32), channels: Some(1), samples: Some(crate::SAMPLES_PER_CALLBACK as u16)
     };
 
     let out_device = audio_subsystem.open_playback(None, &desired_spec, |spec| {
@@ -54,7 +54,7 @@ pub fn init(gen: Arc<Mutex<Generator>>, sample_rate: u32) -> Result<Audio, Strin
 }
 
 struct StreamingPlayer {
-    gen:       Arc<Mutex<Generator>>,
+    gen:       Arc<RwLock<Generator>>,
     counter:   u32,
     nanos:     u128,
     lastnanos: u128,
@@ -65,13 +65,14 @@ impl AudioCallback for StreamingPlayer {
 
     fn callback(&mut self, out: &mut [f32]) {
         let start_time = Instant::now();
-        let mut gen = self.gen.lock();
-        gen.generate(out);
+        {
+            let mut gen = self.gen.write();
+            gen.generate(out);
+            self.lastnanos = Instant::now().duration_since(start_time).as_nanos();
+            gen.sampler_duty = self.lastnanos as f32 / out.len() as f32 / (1E9 / crate::SAMPLE_RATE as f32);
+        }
 
-        self.lastnanos = Instant::now().duration_since(start_time).as_nanos();
         self.nanos += self.lastnanos;
         self.counter += out.len() as u32;
-
-        gen.sampler_duty.store((self.lastnanos as f32 / out.len() as f32 / (1E9 / crate::SAMPLE_RATE as f32)).to_bits(), Ordering::Relaxed);
     }
 }

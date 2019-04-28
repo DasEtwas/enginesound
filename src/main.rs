@@ -1,11 +1,7 @@
 #![feature(proc_macro_hygiene)]
 
-use crate::gen::{Cylinder, Engine, LowPassFilter, Muffler, WaveGuide};
-use parking_lot::Mutex;
-use rand_core::SeedableRng;
-use rand_xorshift::XorShiftRng;
-use std::{sync::{atomic::AtomicU32, Arc},
-          time::SystemTime};
+use crate::gen::{Cylinder, Engine, LowPassFilter, Muffler, Noise, WaveGuide};
+use parking_lot::RwLock;
 
 mod audio;
 mod gen;
@@ -13,10 +9,14 @@ mod gui;
 mod recorder;
 
 use glium::Surface;
+use std::sync::Arc;
+
 mod support;
 
-/// recommended 48000hz, as any other freq produced whining for me
+/// recommended 48000hz, as any other freq produced whining for me on windows
 const SAMPLE_RATE: u32 = 48000;
+const SPEED_OF_SOUND: f32 = 343.0; // m/s
+const SAMPLES_PER_CALLBACK: u32 = 512;
 const WINDOW_WIDTH: f64 = 800.0;
 const WINDOW_HEIGHT: f64 = 500.0;
 const DC_OFFSET_LP_FREQ: f32 = 4.0; // the frequency of the low pass filter which is subtracted from all samples to reduce dc offset and thus clipping
@@ -46,29 +46,27 @@ fn main() {
             exhaust_open_refl:   -0.98,
             exhaust_closed_refl: 1.0,
 
-            piston_motion_factor:     0.6,
-            ignition_factor:          1.9,
-            ignition_time:            0.6,
-            crankshaft_flucuation_lp: LowPassFilter::new(350.0, SAMPLE_RATE),
+            piston_motion_factor:      0.6,
+            ignition_factor:           1.9,
+            ignition_time:             0.2,
+            crankshaft_fluctuation_lp: LowPassFilter::new(350.0, SAMPLE_RATE),
+            pressure_release_factor:   0.1,
 
             // running values
+            cyl_sound:         0.0,
             cyl_pressure:      0.0,
             extractor_exhaust: 0.0,
         });
     }
 
     let engine: Engine = Engine {
-        rpm: AtomicU32::new((1400.0_f32).to_bits()),
-        /// crankshaft position, 0.0-1.0
-        crankshaft_pos: 0.0,
+        rpm: 1400.0_f32,
+
         cylinders,
-        exhaust_pipe: WaveGuide::new(seconds_to_samples(3.0 / speed_of_sound), -0.8, -0.8),
-        intake_noise: XorShiftRng::from_seed(unsafe {
-            std::mem::transmute::<u128, [u8; 16]>(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos())
-        }),
+        intake_noise: Noise::default(),
         intake_noise_factor: 0.6,
         intake_lp_filter: LowPassFilter::new(2000.0, SAMPLE_RATE),
-        engine_vibration_filter: LowPassFilter::new(30.0, SAMPLE_RATE),
+        engine_vibration_filter: LowPassFilter::new(300.0, SAMPLE_RATE),
         muffler: Muffler {
             muffler_elements: [
                 WaveGuide::new(seconds_to_samples(0.05 / speed_of_sound), -0.5, -0.5),
@@ -76,15 +74,21 @@ fn main() {
                 WaveGuide::new(seconds_to_samples(0.35 / speed_of_sound), -0.5, -0.5),
                 WaveGuide::new(seconds_to_samples(0.48 / speed_of_sound), -0.5, -0.5),
             ],
-            straight_pipe:    WaveGuide::new(seconds_to_samples(3.0 / speed_of_sound), -0.2, -0.2),
+            straight_pipe:    WaveGuide::new(seconds_to_samples(2.0 / speed_of_sound), -0.2, -0.2),
         },
+
+        intake_valve_shift: 0.0,
+        exhaust_valve_shift: 0.0,
         crankshaft_fluctuation: 0.17,
         // running values
+        /// crankshaft position, 0.0-1.0
+        crankshaft_pos: 0.0,
         exhaust_collector: 0.0,
+        intake_collector: 0.0,
     };
 
     // sound generator
-    let generator = Arc::new(Mutex::new(gen::Generator::new(SAMPLE_RATE, engine, LowPassFilter::new(DC_OFFSET_LP_FREQ, SAMPLE_RATE))));
+    let generator = Arc::new(RwLock::new(gen::Generator::new(SAMPLE_RATE, engine, LowPassFilter::new(DC_OFFSET_LP_FREQ, SAMPLE_RATE))));
 
     let audio = match audio::init(generator.clone(), SAMPLE_RATE) {
         Ok(audio) => audio,
@@ -103,7 +107,7 @@ fn main() {
         let display = glium::Display::new(window, context, &events_loop).unwrap();
         let display = support::GliumDisplayWinitWrapper(display);
 
-        let mut ui = conrod_core::UiBuilder::new([WINDOW_WIDTH, WINDOW_HEIGHT * 2.0]).theme(gui::theme()).build();
+        let mut ui = conrod_core::UiBuilder::new([WINDOW_WIDTH, WINDOW_HEIGHT]).theme(gui::theme()).build();
         let ids = gui::Ids::new(ui.widget_id_generator());
 
         ui.fonts.insert_from_file("fonts/NotoSans/NotoSans-Regular.ttf").unwrap();

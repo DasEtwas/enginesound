@@ -10,6 +10,9 @@ hound = "3.4.0"
 crossbeam = "0.7.1"
 chrono = "0.4.6"
 
+# saving presets #
+serde = { version = "1.0.90", features = ["derive"] }
+
 # misc #
 parking_lot = "0.7.1"
 

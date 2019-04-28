@@ -5,49 +5,91 @@
 //! it's output worked upon and then new input samples are `push`ed.
 //!
 
-use crate::recorder::Recorder;
-use rand_core::RngCore;
+use crate::{recorder::Recorder, SAMPLES_PER_CALLBACK};
+use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
+use serde::{Deserialize, Serialize};
 use simdeez::{avx2::*, scalar::*, sse2::*, sse41::*, *};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::{ops::{Deref, DerefMut},
+          time::SystemTime};
 
 pub const PI2F: f32 = 2.0 * std::f32::consts::PI;
 pub const PI4F: f32 = 4.0 * std::f32::consts::PI;
 
 // https://www.researchgate.net/profile/Stefano_Delle_Monache/publication/280086598_Physically_informed_car_engine_sound_synthesis_for_virtual_and_augmented_environments/links/55a791bc08aea2222c746724/Physically-informed-car-engine-sound-synthesis-for-virtual-and-augmented-environments.pdf?origin=publication_detail
 
+#[derive(Serialize, Deserialize)]
 pub struct Generator {
-    pub sampler_duty: AtomicU32,
+    pub sampler_duty: f32,
+    #[serde(skip_serializing, skip_deserializing)]
     pub recorder: Option<Recorder>,
-    pub volume: AtomicU32,
-    pub intake_volume: AtomicU32,
-    pub exhaust_volume: AtomicU32,
-    pub engine_vibrations_volume: AtomicU32,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub gui_graph: Vec<f32>,
+    pub volume: f32,
+    pub intake_volume: f32,
+    pub exhaust_volume: f32,
+    pub engine_vibrations_volume: f32,
     pub samples_per_second: u32,
     pub engine: Engine,
     /// `LowPassFilter` which is subtracted from the sample while playing back to reduce dc offset and thus clipping
     dc_lp: LowPassFilter,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Muffler {
     pub straight_pipe:    WaveGuide,
     pub muffler_elements: [WaveGuide; 4],
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Engine {
-    pub rpm: AtomicU32,
-    /// crankshaft position, 0.0-1.0
-    pub crankshaft_pos: f32,
+    pub rpm: f32,
+
     pub cylinders: Vec<Cylinder>,
-    pub exhaust_pipe: WaveGuide,
-    pub intake_noise: XorShiftRng,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub intake_noise: Noise,
     pub intake_noise_factor: f32,
     pub intake_lp_filter: LowPassFilter,
     pub engine_vibration_filter: LowPassFilter,
     pub muffler: Muffler,
-    // running value
-    pub exhaust_collector:      f32,
+    /// valve timing -0.5 - 0.5
+    pub intake_valve_shift: f32,
+    /// valve timing -0.5 - 0.5
+    pub exhaust_valve_shift: f32,
     pub crankshaft_fluctuation: f32,
+    // running values
+    /// crankshaft position, 0.0-1.0
+    pub crankshaft_pos: f32,
+    pub exhaust_collector: f32,
+    pub intake_collector: f32,
+}
+
+pub struct Noise {
+    inner: XorShiftRng,
+}
+
+impl Default for Noise {
+    fn default() -> Self {
+        Noise {
+            inner: XorShiftRng::from_seed(unsafe {
+                std::mem::transmute::<u128, [u8; 16]>(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos())
+            }),
+        }
+    }
+}
+
+impl Deref for Noise {
+    type Target = XorShiftRng;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl DerefMut for Noise {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
 }
 
 /// Represents one audio cylinder
@@ -64,6 +106,7 @@ pub struct Engine {
 ///
 /// |EV|    - Exhaust valve modulation function for this side of the WaveGuide (alpha)
 /// ```
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Cylinder {
     /// offset of this cylinder's piston crank
     pub crank_offset: f32,
@@ -83,9 +126,12 @@ pub struct Cylinder {
     pub ignition_factor: f32,
     /// the time it takes for the fuel to ignite in crank cycles (0.0 - 1.0)
     pub ignition_time: f32,
-    pub crankshaft_flucuation_lp: LowPassFilter,
+    pub crankshaft_fluctuation_lp: LowPassFilter,
+    /// time it takes for the pressure in the cylinder to release into exhaust/intake
+    pub pressure_release_factor: f32,
 
     // running values
+    pub cyl_sound:         f32,
     pub cyl_pressure:      f32,
     pub extractor_exhaust: f32,
 }
@@ -94,13 +140,13 @@ impl Cylinder {
     /// takes in the current exhaust collector pressure
     /// returns intake, exhaust, piston + ignition values
     #[inline]
-    pub(in crate::gen) fn pop(&mut self, crank_pos: f32, exhaust_collector: f32) -> (f32, f32, f32) {
+    pub(in crate::gen) fn pop(&mut self, crank_pos: f32, exhaust_collector: f32, intake_valve_shift: f32, exhaust_valve_shift: f32) -> (f32, f32, f32) {
         let crank = (crank_pos + self.crank_offset) % 1.0;
 
-        self.cyl_pressure = piston_motion(crank) * self.piston_motion_factor + fuel_ignition(crank, self.ignition_time) * self.piston_motion_factor;
+        self.cyl_sound = piston_motion(crank) * self.piston_motion_factor + fuel_ignition(crank, self.ignition_time) * self.piston_motion_factor;
 
-        let ex_valve = exhaust_valve(crank);
-        let in_valve = intake_valve(crank);
+        let ex_valve = exhaust_valve(crank + exhaust_valve_shift);
+        let in_valve = intake_valve(crank + intake_valve_shift);
 
         self.exhaust_waveguide.alpha = (1.0 - ex_valve) * self.exhaust_open_refl + ex_valve * self.exhaust_closed_refl;
         self.intake_waveguide.alpha = (1.0 - in_valve) * self.intake_open_refl + in_valve * self.intake_closed_refl;
@@ -113,29 +159,32 @@ impl Cylinder {
         self.extractor_exhaust = extractor_wg_ret.0;
         self.extractor_waveguide.push(ex_wg_ret.1, exhaust_collector);
 
-        let ret = (in_wg_ret.1, extractor_wg_ret.1, self.cyl_pressure);
+        self.cyl_pressure += self.cyl_sound + ex_wg_ret.0 + in_wg_ret.0;
 
-        self.cyl_pressure += ex_wg_ret.0 + in_wg_ret.0;
-
-        ret
+        (in_wg_ret.1, extractor_wg_ret.1, self.cyl_sound)
     }
 
     /// called after pop
     pub(in crate::gen) fn push(&mut self, intake: f32) {
-        self.exhaust_waveguide.push(self.cyl_pressure, self.extractor_exhaust);
-        self.intake_waveguide.push(self.cyl_pressure, intake);
+        let ex_in = self.exhaust_waveguide.alpha.abs() * self.cyl_pressure * 0.5 * self.pressure_release_factor;
+        self.exhaust_waveguide.push(ex_in, self.extractor_exhaust);
+        let in_in = self.intake_waveguide.alpha.abs() * self.cyl_pressure * 0.5 * self.pressure_release_factor;
+        self.intake_waveguide.push(in_in, intake);
+
+        self.cyl_pressure = self.cyl_pressure - ex_in - in_in;
     }
 }
 
 impl Generator {
     pub(crate) fn new(samples_per_second: u32, engine: Engine, dc_lp: LowPassFilter) -> Generator {
         Generator {
-            sampler_duty: AtomicU32::new((0.0_f32).to_bits()),
+            sampler_duty: 0.0_f32,
             recorder: None,
-            volume: AtomicU32::new((0.2_f32).to_bits()),
-            intake_volume: AtomicU32::new((0.333_f32).to_bits()),
-            exhaust_volume: AtomicU32::new((0.333_f32).to_bits()),
-            engine_vibrations_volume: AtomicU32::new((0.333_f32).to_bits()),
+            gui_graph: vec![0.0; 2 * SAMPLES_PER_CALLBACK as usize],
+            volume: 0.2_f32,
+            intake_volume: 0.333_f32,
+            exhaust_volume: 0.333_f32,
+            engine_vibrations_volume: 0.333_f32,
             samples_per_second,
             engine,
             dc_lp,
@@ -164,6 +213,9 @@ impl Generator {
         if let Some(recorder) = &mut self.recorder {
             recorder.record(buf.to_vec());
         }
+
+        self.gui_graph.clear();
+        self.gui_graph.extend_from_slice(buf);
     }
 
     pub fn reset(&mut self) {
@@ -175,56 +227,59 @@ impl Generator {
             cyl.extractor_waveguide.chamber0.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
             cyl.extractor_waveguide.chamber1.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
         }
+
+        self.engine.muffler.straight_pipe.chamber0.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
+        self.engine.muffler.straight_pipe.chamber1.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
     }
 
     #[inline]
     pub fn get_rpm(&self) -> f32 {
-        f32::from_bits(self.engine.rpm.load(Ordering::Relaxed))
+        self.engine.rpm
     }
 
     #[inline]
-    pub fn set_rpm(&self, rpm: f32) {
-        self.engine.rpm.store(rpm.to_bits(), Ordering::Relaxed)
+    pub fn set_rpm(&mut self, rpm: f32) {
+        self.engine.rpm = rpm;
+    }
+
+    #[inline]
+    pub fn set_volume(&mut self, volume: f32) {
+        self.volume = volume;
     }
 
     #[inline]
     pub fn get_volume(&self) -> f32 {
-        f32::from_bits(self.volume.load(Ordering::Relaxed))
+        self.volume
     }
 
     #[inline]
-    pub fn set_volume(&self, volume: f32) {
-        self.volume.store(volume.to_bits(), Ordering::Relaxed)
-    }
-
-    #[inline]
-    pub fn set_intake_volume(&self, intake_volume: f32) {
-        self.intake_volume.store(intake_volume.to_bits(), Ordering::Relaxed)
+    pub fn set_intake_volume(&mut self, intake_volume: f32) {
+        self.intake_volume = intake_volume;
     }
 
     #[inline]
     pub fn get_intake_volume(&self) -> f32 {
-        f32::from_bits(self.intake_volume.load(Ordering::Relaxed))
+        self.intake_volume
     }
 
     #[inline]
-    pub fn set_exhaust_volume(&self, exhaust_volume: f32) {
-        self.exhaust_volume.store(exhaust_volume.to_bits(), Ordering::Relaxed)
+    pub fn set_exhaust_volume(&mut self, exhaust_volume: f32) {
+        self.exhaust_volume = exhaust_volume;
     }
 
     #[inline]
     pub fn get_exhaust_volume(&self) -> f32 {
-        f32::from_bits(self.exhaust_volume.load(Ordering::Relaxed))
+        self.exhaust_volume
     }
 
     #[inline]
-    pub fn set_engine_vibrations_volume(&self, engine_vibrations_volume: f32) {
-        self.engine_vibrations_volume.store(engine_vibrations_volume.to_bits(), Ordering::Relaxed)
+    pub fn set_engine_vibrations_volume(&mut self, engine_vibrations_volume: f32) {
+        self.engine_vibrations_volume = engine_vibrations_volume;
     }
 
     #[inline]
     pub fn get_engine_vibrations_volume(&self) -> f32 {
-        f32::from_bits(self.engine_vibrations_volume.load(Ordering::Relaxed))
+        self.engine_vibrations_volume
     }
 
     /// generates one sample worth of data
@@ -233,33 +288,31 @@ impl Generator {
         let intake_noise = self.engine.intake_lp_filter.filter(self.engine.intake_noise.next_u32() as f32 / (std::u32::MAX as f32 / 2.0) - 1.0)
             * self.engine.intake_noise_factor;
 
-        let mut intake = 0.0;
-
         let mut engine_vibration = 0.0;
 
         let num_cyl = self.engine.cylinders.len() as f32;
 
-        let exhaust_collector = self.engine.exhaust_collector;
+        let last_exhaust_collector = self.engine.exhaust_collector / num_cyl;
         self.engine.exhaust_collector = 0.0;
+        self.engine.intake_collector = 0.0;
 
         for cylinder in self.engine.cylinders.iter_mut() {
             let crankshaft_fluctuation_offset =
-                cylinder.crankshaft_flucuation_lp.filter(self.engine.intake_noise.next_u32() as f32 / (std::u32::MAX as f32 / 2.0) - 1.0);
-            let (cyl_intake, cyl_exhaust, cyl_vib) =
-                cylinder.pop(self.engine.crankshaft_pos + self.engine.crankshaft_fluctuation * crankshaft_fluctuation_offset, exhaust_collector / num_cyl);
-            intake += cyl_intake;
+                cylinder.crankshaft_fluctuation_lp.filter(self.engine.intake_noise.next_u32() as f32 / (std::u32::MAX as f32 / 2.0) - 1.0);
+            let (cyl_intake, cyl_exhaust, cyl_vib) = cylinder.pop(
+                self.engine.crankshaft_pos + self.engine.crankshaft_fluctuation * crankshaft_fluctuation_offset,
+                last_exhaust_collector,
+                self.engine.intake_valve_shift,
+                self.engine.exhaust_valve_shift,
+            );
+            self.engine.intake_collector += cyl_intake;
             self.engine.exhaust_collector += cyl_exhaust;
             engine_vibration += cyl_vib;
         }
 
-        for cylinder in self.engine.cylinders.iter_mut() {
-            // modulate intake
-            cylinder.push(intake / num_cyl + intake_noise * intake_valve((self.engine.crankshaft_pos + cylinder.crank_offset) % 1.0));
-        }
-
         // parallel input to the exhaust straight pipe
         // alpha end is at exhaust collector
-        let mut straight_pipe_wg_ret = self.engine.muffler.straight_pipe.pop();
+        let straight_pipe_wg_ret = self.engine.muffler.straight_pipe.pop();
         self.engine.exhaust_collector += straight_pipe_wg_ret.0;
 
         // alpha end is at straight pipe end (beta)
@@ -271,28 +324,42 @@ impl Generator {
             muffler_wg_ret.1 += ret.1;
         }
 
-        straight_pipe_wg_ret.1 = (straight_pipe_wg_ret.1 + muffler_wg_ret.0) * 0.5;
+        // pop  //
+        //////////
+        // push //
 
-        self.engine.muffler.straight_pipe.push(self.engine.exhaust_collector, straight_pipe_wg_ret.1);
+        let straight_pipe_out_muffler_in = (straight_pipe_wg_ret.1 + muffler_wg_ret.0) * 0.5;
+
+        for cylinder in self.engine.cylinders.iter_mut() {
+            // modulate intake
+            cylinder.push(self.engine.intake_collector / num_cyl + intake_noise * intake_valve((self.engine.crankshaft_pos + cylinder.crank_offset) % 1.0));
+        }
+
+        self.engine.muffler.straight_pipe.push(self.engine.exhaust_collector, straight_pipe_out_muffler_in);
 
         let muffler_elements = self.engine.muffler.muffler_elements.len() as f32;
 
         for muffler_delay_line in self.engine.muffler.muffler_elements.iter_mut() {
-            muffler_delay_line.push(straight_pipe_wg_ret.1 / muffler_elements * 10.0, 0.0);
+            muffler_delay_line.push(straight_pipe_out_muffler_in / muffler_elements, 0.0);
         }
 
-        (intake, engine_vibration, muffler_wg_ret.1)
+        engine_vibration = self.engine.engine_vibration_filter.filter(engine_vibration);
+
+        (self.engine.intake_collector, engine_vibration, muffler_wg_ret.1)
     }
 }
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct WaveGuide {
     // goes from x0 to x1
-    chamber0: DelayLine,
+    pub chamber0: DelayLine,
     // goes from x1 to x0
     chamber1: DelayLine,
     /// reflection factor for the first value of the return tuple of `pop`
-    alpha: f32,
+    pub alpha: f32,
     /// reflection factor for the second value of the return tuple of `pop`
-    beta: f32,
+    pub beta: f32,
+    // running values
     c1_out: f32,
     c0_out: f32,
 }
@@ -327,13 +394,22 @@ impl WaveGuide {
         self.chamber0.samples.advance();
         self.chamber1.samples.advance();
     }
+
+    pub fn update(&mut self, delay: usize, alpha: f32, beta: f32) -> Option<Self> {
+        if delay != self.chamber0.samples.len || alpha != self.alpha || beta != self.beta {
+            Some(Self::new(delay, alpha, beta))
+        } else {
+            None
+        }
+    }
 }
 
-#[derive(Clone)]
-struct LoopBuffer<T> {
-    len:                     usize,
+#[derive(Clone, Serialize, Deserialize)]
+pub struct LoopBuffer<T> {
+    pub len: usize,
+    #[serde(skip_serializing, skip_deserializing)]
     pub(in crate::gen) data: Vec<T>,
-    pos:                     usize,
+    pos: usize,
 }
 
 impl<T> LoopBuffer<T>
@@ -383,10 +459,10 @@ where T: Clone
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct LowPassFilter {
-    samples:            LoopBuffer<f32>,
-    samples_per_second: u32,
+    pub samples:            LoopBuffer<f32>,
+    pub samples_per_second: u32,
 }
 
 impl LowPassFilter {
@@ -420,10 +496,20 @@ impl LowPassFilter {
 
         sum_runtime_select(&self.samples.data)
     }
+
+    pub fn update(&mut self, freq: f32) -> Option<Self> {
+        let newfreq_samples = ((self.samples_per_second as f32 / freq) as u32).min(self.samples_per_second).max(1) as usize;
+        if newfreq_samples != self.samples.len {
+            Some(Self::new(freq, self.samples_per_second))
+        } else {
+            None
+        }
+    }
 }
 
-struct DelayLine {
-    samples: LoopBuffer<f32>,
+#[derive(Clone, Serialize, Deserialize)]
+pub struct DelayLine {
+    pub samples: LoopBuffer<f32>,
 }
 
 impl DelayLine {
