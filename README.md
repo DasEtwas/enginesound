@@ -32,4 +32,4 @@ MIT License
 
 ## Credits ##
 
-[conrod](https://github.com/PistonDevelopers/conrod) made making the GUI trivial and also provided the font.
+[conrod](https://github.com/PistonDevelopers/conrod) made making the GUI trivial.
