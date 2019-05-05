@@ -35,11 +35,10 @@ widget_ids! {
         // The title and introduction widgets.
         title,
         duty_display,
-        canvas_scrollbar,
         record_button,
         reset_button,
         engine_rpm_slider,
-               engine_master_volume_slider,
+        engine_master_volume_slider,
         engine_intake_volume_slider,
         engine_exhaust_volume_slider,
         engine_engine_vibrations_volume_slider,
@@ -54,28 +53,34 @@ widget_ids! {
         engine_crankshaft_fluctuation,
 
         cylinder_title,
+        cylinder_offset_growl,
         cylinder_num,
         cylinder_crank_offset,
         cylinder_intake_open_refl,
         cylinder_intake_closed_refl,
         cylinder_exhaust_open_refl,
         cylinder_exhaust_closed_refl,
+        cylinder_intake_open_end_refl,
+        cylinder_extractor_open_end_refl,
         cylinder_piston_motion_factor,
         cylinder_ignition_factor,
         cylinder_ignition_time,
         cylinder_pressure_release_factor,
 
         graph,
+
+        canvas_scrollbar,
     }
 }
 
 /// Instantiate a GUI demonstrating every widget available in conrod.
 pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Generator>>) {
+    const PAD_TOP: conrod_core::Scalar = 10.0;
     const PAD: conrod_core::Scalar = 20.0;
 
-    widget::Canvas::new().pad(PAD).pad_right(PAD + 20.0).pad_top(PAD - 10.0).scroll_kids_vertically().set(ids.canvas, ui);
+    widget::Canvas::new().pad(PAD).pad_right(PAD + 20.0).pad_top(0.0).scroll_kids_vertically().set(ids.canvas, ui);
 
-    widget::Text::new("Engine Sound Generator").font_size(24).down(7.0).top_left_with_margin(PAD).w(ui.window_dim()[0] - PAD * 2.0).set(ids.title, ui);
+    widget::Text::new("Engine Sound Generator").font_size(24).top_left_with_margins(PAD_TOP, PAD).w(ui.win_w - PAD * 2.0).set(ids.title, ui);
 
     {
         let mut generator = generator.write();
@@ -118,7 +123,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
 
         {
             let prev_val = generator.get_rpm();
-            for value in widget::Slider::new(prev_val, 700.0, 9000.0)
+            for value in widget::Slider::new(prev_val, 300.0, 9000.0)
                 .label(format!("Engine RPM {:.2}", prev_val).as_str())
                 .label_font_size(12)
                 .padded_w_of(ids.canvas, PAD)
@@ -362,6 +367,23 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
             let mut changed = false;
             let mut num_cylinders = generator.engine.cylinders.len();
 
+            // inverse of i as f32 / num_cylinders as f32 * (1.0 - growl)
+            let mut growl = 1.0 - (generator.engine.cylinders[num_cylinders - 1].crank_offset * num_cylinders as f32 / (num_cylinders - 1) as f32);
+            {
+                const MIN: f32 = 0.0;
+                const MAX: f32 = 1.0;
+                for value in widget::Slider::new(growl, MIN, MAX)
+                    .label(format!("growl {}", growl).as_str())
+                    .label_font_size(12)
+                    .padded_w_of(ids.canvas, PAD)
+                    .down(5.0)
+                    .set(ids.cylinder_offset_growl, ui)
+                {
+                    changed = true;
+                    growl = if value.is_normal() { value } else { 0.0 };
+                }
+            }
+
             {
                 const MIN: f32 = 1.0;
                 const MAX: f32 = 16.0;
@@ -385,7 +407,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
 
             // intake_open_refl
             {
-                const MIN: f32 = 0.0;
+                const MIN: f32 = -1.0;
                 const MAX: f32 = 1.0;
                 let prev_val = cylinder.intake_open_refl;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
@@ -401,7 +423,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
             }
             // intake_closed_refl
             {
-                const MIN: f32 = 0.0;
+                const MIN: f32 = -1.0;
                 const MAX: f32 = 1.0;
                 let prev_val = cylinder.intake_closed_refl;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
@@ -417,7 +439,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
             }
             // exhaust_open_refl
             {
-                const MIN: f32 = 0.0;
+                const MIN: f32 = -1.0;
                 const MAX: f32 = 1.0;
                 let prev_val = cylinder.exhaust_open_refl;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
@@ -433,7 +455,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
             }
             // exhaust_closed_refl
             {
-                const MIN: f32 = 0.0;
+                const MIN: f32 = -1.0;
                 const MAX: f32 = 1.0;
                 let prev_val = cylinder.exhaust_closed_refl;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
@@ -447,10 +469,42 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                     cylinder.exhaust_closed_refl = value;
                 }
             }
+            // cylinder_intake_open_end_refl
+            {
+                const MIN: f32 = -1.0;
+                const MAX: f32 = 1.0;
+                let prev_val = cylinder.intake_waveguide.beta;
+                for value in widget::Slider::new(prev_val, MIN, MAX)
+                    .label(format!("cylinder_intake_open_end_refl {:.2}", prev_val).as_str())
+                    .label_font_size(12)
+                    .padded_w_of(ids.canvas, PAD)
+                    .down(5.0)
+                    .set(ids.cylinder_intake_open_end_refl, ui)
+                {
+                    changed = true;
+                    cylinder.intake_waveguide.beta = value;
+                }
+            }
+            // cylinder_extractor_open_end_refl
+            {
+                const MIN: f32 = -1.0;
+                const MAX: f32 = 1.0;
+                let prev_val = cylinder.extractor_waveguide.beta;
+                for value in widget::Slider::new(prev_val, MIN, MAX)
+                    .label(format!("cylinder_extractor_open_end_refl {:.2}", prev_val).as_str())
+                    .label_font_size(12)
+                    .padded_w_of(ids.canvas, PAD)
+                    .down(5.0)
+                    .set(ids.cylinder_extractor_open_end_refl, ui)
+                {
+                    changed = true;
+                    cylinder.extractor_waveguide.beta = value;
+                }
+            }
             // piston_motion_factor
             {
                 const MIN: f32 = 0.0;
-                const MAX: f32 = 1.0;
+                const MAX: f32 = 5.0;
                 let prev_val = cylinder.piston_motion_factor;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
                     .label(format!("piston_motion_factor {:.2}", prev_val).as_str())
@@ -466,7 +520,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
             // ignition_factor
             {
                 const MIN: f32 = 0.0;
-                const MAX: f32 = 1.0;
+                const MAX: f32 = 5.0;
                 let prev_val = cylinder.ignition_factor;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
                     .label(format!("ignition_factor {:.2}", prev_val).as_str())
@@ -497,18 +551,22 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
             }
             // pressure_release_factor
             {
-                const MIN: f32 = 0.0001;
-                const MAX: f32 = 1.0;
-                let prev_val = cylinder.pressure_release_factor;
+                const MIN: f32 = 0.007;
+                const MAX: f32 = 0.4;
+                let prev_val = 1.0 - cylinder.pressure_release_factor.powf(SAMPLE_RATE as f32);
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("pressure_release_factor {:.5}", prev_val).as_str())
+                    .label(format!("pressure_release_time {:.6} sec", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(5.0)
                     .set(ids.cylinder_pressure_release_factor, ui)
                 {
-                    changed = true;
-                    cylinder.pressure_release_factor = value;
+                    let new_val = (1.0 - value).powf(1.0 / SAMPLE_RATE as f32);
+
+                    if (cylinder.pressure_release_factor - new_val).abs() > 1E-12 {
+                        changed = true;
+                        cylinder.pressure_release_factor = new_val;
+                    }
                 }
             }
 
@@ -516,7 +574,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 generator.engine.cylinders.clear();
                 for i in 0..num_cylinders {
                     let mut cyl = cylinder.clone();
-                    cyl.crank_offset = i as f32 / num_cylinders as f32;
+                    cyl.crank_offset = i as f32 / num_cylinders as f32 * (1.0 - growl);
                     generator.engine.cylinders.push(cyl);
                 }
             }
@@ -540,10 +598,13 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 }
         */
 
-        widget::PlotPath::new(0.0, generator.gui_graph.len() as f32, -1.0, 1.0, |x| generator.gui_graph[x as usize]).set(ids.graph, ui);
+        {
+            let len = generator.gui_graph.len() as f32;
+            widget::PlotPath::new(0.0, 1.0, -3.0, 3.0, |x| generator.gui_graph[(x * len) as usize].min(1.0).max(-1.0) * 3.0).set(ids.graph, ui);
+        }
     }
 
-    widget::Scrollbar::y_axis(ids.canvas).auto_hide(true).set(ids.canvas_scrollbar, ui);
+    widget::Scrollbar::y_axis(ids.canvas).auto_hide(false).set(ids.canvas_scrollbar, ui);
 }
 
 fn recording_name() -> String {

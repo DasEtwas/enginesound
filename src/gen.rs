@@ -19,23 +19,6 @@ pub const PI4F: f32 = 4.0 * std::f32::consts::PI;
 // https://www.researchgate.net/profile/Stefano_Delle_Monache/publication/280086598_Physically_informed_car_engine_sound_synthesis_for_virtual_and_augmented_environments/links/55a791bc08aea2222c746724/Physically-informed-car-engine-sound-synthesis-for-virtual-and-augmented-environments.pdf?origin=publication_detail
 
 #[derive(Serialize, Deserialize)]
-pub struct Generator {
-    pub sampler_duty: f32,
-    #[serde(skip_serializing, skip_deserializing)]
-    pub recorder: Option<Recorder>,
-    #[serde(skip_serializing, skip_deserializing)]
-    pub gui_graph: Vec<f32>,
-    pub volume: f32,
-    pub intake_volume: f32,
-    pub exhaust_volume: f32,
-    pub engine_vibrations_volume: f32,
-    pub samples_per_second: u32,
-    pub engine: Engine,
-    /// `LowPassFilter` which is subtracted from the sample while playing back to reduce dc offset and thus clipping
-    dc_lp: LowPassFilter,
-}
-
-#[derive(Serialize, Deserialize)]
 pub struct Muffler {
     pub straight_pipe:    WaveGuide,
     pub muffler_elements: [WaveGuide; 4],
@@ -57,6 +40,7 @@ pub struct Engine {
     /// valve timing -0.5 - 0.5
     pub exhaust_valve_shift: f32,
     pub crankshaft_fluctuation: f32,
+    pub crankshaft_fluctuation_lp: LowPassFilter,
     // running values
     /// crankshaft position, 0.0-1.0
     pub crankshaft_pos: f32,
@@ -126,7 +110,6 @@ pub struct Cylinder {
     pub ignition_factor: f32,
     /// the time it takes for the fuel to ignite in crank cycles (0.0 - 1.0)
     pub ignition_time: f32,
-    pub crankshaft_fluctuation_lp: LowPassFilter,
     /// time it takes for the pressure in the cylinder to release into exhaust/intake
     pub pressure_release_factor: f32,
 
@@ -143,7 +126,7 @@ impl Cylinder {
     pub(in crate::gen) fn pop(&mut self, crank_pos: f32, exhaust_collector: f32, intake_valve_shift: f32, exhaust_valve_shift: f32) -> (f32, f32, f32) {
         let crank = (crank_pos + self.crank_offset) % 1.0;
 
-        self.cyl_sound = piston_motion(crank) * self.piston_motion_factor + fuel_ignition(crank, self.ignition_time) * self.piston_motion_factor;
+        self.cyl_sound = piston_motion(crank) * self.piston_motion_factor + fuel_ignition(crank, self.ignition_time) * self.ignition_factor;
 
         let ex_valve = exhaust_valve(crank + exhaust_valve_shift);
         let in_valve = intake_valve(crank + intake_valve_shift);
@@ -171,8 +154,25 @@ impl Cylinder {
         let in_in = self.intake_waveguide.alpha.abs() * self.cyl_pressure * 0.5 * self.pressure_release_factor;
         self.intake_waveguide.push(in_in, intake);
 
-        self.cyl_pressure = self.cyl_pressure - ex_in - in_in;
+        self.cyl_pressure -= ex_in + in_in;
     }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Generator {
+    pub sampler_duty: f32,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub recorder: Option<Recorder>,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub gui_graph: Vec<f32>,
+    pub volume: f32,
+    pub intake_volume: f32,
+    pub exhaust_volume: f32,
+    pub engine_vibrations_volume: f32,
+    pub samples_per_second: u32,
+    pub engine: Engine,
+    /// `LowPassFilter` which is subtracted from the sample while playing back to reduce dc offset and thus clipping
+    dc_lp: LowPassFilter,
 }
 
 impl Generator {
@@ -181,7 +181,7 @@ impl Generator {
             sampler_duty: 0.0_f32,
             recorder: None,
             gui_graph: vec![0.0; 2 * SAMPLES_PER_CALLBACK as usize],
-            volume: 0.2_f32,
+            volume: 0.1_f32,
             intake_volume: 0.333_f32,
             exhaust_volume: 0.333_f32,
             engine_vibrations_volume: 0.333_f32,
@@ -296,9 +296,10 @@ impl Generator {
         self.engine.exhaust_collector = 0.0;
         self.engine.intake_collector = 0.0;
 
+        let crankshaft_fluctuation_offset =
+            self.engine.crankshaft_fluctuation_lp.filter(self.engine.intake_noise.next_u32() as f32 / (std::u32::MAX as f32 / 2.0) - 1.0);
+
         for cylinder in self.engine.cylinders.iter_mut() {
-            let crankshaft_fluctuation_offset =
-                cylinder.crankshaft_fluctuation_lp.filter(self.engine.intake_noise.next_u32() as f32 / (std::u32::MAX as f32 / 2.0) - 1.0);
             let (cyl_intake, cyl_exhaust, cyl_vib) = cylinder.pop(
                 self.engine.crankshaft_pos + self.engine.crankshaft_fluctuation * crankshaft_fluctuation_offset,
                 last_exhaust_collector,
