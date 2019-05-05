@@ -18,7 +18,7 @@ const SAMPLE_RATE: u32 = 48000;
 const SPEED_OF_SOUND: f32 = 343.0; // m/s
 const SAMPLES_PER_CALLBACK: u32 = 512;
 const WINDOW_WIDTH: f64 = 800.0;
-const WINDOW_HEIGHT: f64 = 1000.0;
+const WINDOW_HEIGHT: f64 = 800.0;
 const DC_OFFSET_LP_FREQ: f32 = 4.0; // the frequency of the low pass filter which is subtracted from all samples to reduce dc offset and thus clipping
 
 fn main() {
@@ -40,10 +40,10 @@ fn main() {
             // alpha is set while running, beta is intake_openside_refl:  -0.5
             intake_waveguide:    WaveGuide::new(seconds_to_samples(0.7 / speed_of_sound), -1000.0, -0.5),
             extractor_waveguide: WaveGuide::new(seconds_to_samples(1.0 / speed_of_sound), 0.0, 0.7),
-            intake_open_refl:    -0.98,
-            intake_closed_refl:  1.0,
-            exhaust_open_refl:   -0.98,
-            exhaust_closed_refl: 1.0,
+            intake_open_refl:    1.0,
+            intake_closed_refl:  0.0,
+            exhaust_open_refl:   1.0,
+            exhaust_closed_refl: 0.0,
 
             piston_motion_factor:    0.6,
             ignition_factor:         1.9,
