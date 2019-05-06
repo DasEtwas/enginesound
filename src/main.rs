@@ -8,6 +8,7 @@ mod gen;
 mod gui;
 mod recorder;
 
+use conrod_core::text::Font;
 use glium::Surface;
 use std::sync::Arc;
 
@@ -109,7 +110,7 @@ fn main() {
         let mut ui = conrod_core::UiBuilder::new([WINDOW_WIDTH, WINDOW_HEIGHT]).theme(gui::theme()).build();
         let ids = gui::Ids::new(ui.widget_id_generator());
 
-        ui.fonts.insert_from_file("fonts/NotoSans/NotoSans-Regular.ttf").unwrap();
+        ui.fonts.insert(Font::from_bytes(&include_bytes!("../fonts/NotoSans/NotoSans-Regular.ttf")[..]).unwrap());
 
         let mut renderer = conrod_glium::Renderer::new(&display.0).unwrap();
 
