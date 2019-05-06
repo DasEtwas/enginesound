@@ -38,7 +38,7 @@ impl Recorder {
                 while running.load(Ordering::Relaxed) {
                     match recv.recv() {
                         Ok(samples) => {
-                            samples.iter().for_each(|sample| wav_writer.write_sample((*sample * std::i16::MAX as f32) as i16).unwrap());
+                            samples.iter().for_each(|sample| wav_writer.write_sample((sample.max(-1.0).min(1.0) * std::i16::MAX as f32) as i16).unwrap());
                         },
                         Err(_) => break,
                     }
@@ -47,7 +47,7 @@ impl Recorder {
                 println!("Stopped recording, finishing writing WAV..");
 
                 while let Ok(samples) = recv.try_recv() {
-                    samples.iter().for_each(|sample| wav_writer.write_sample((*sample * std::i16::MAX as f32) as i16).unwrap());
+                    samples.iter().for_each(|sample| wav_writer.write_sample((sample.max(-1.0).min(1.0) * std::i16::MAX as f32) as i16).unwrap());
                 }
 
                 wav_writer.flush().unwrap();
