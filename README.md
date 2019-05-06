@@ -34,6 +34,13 @@ cargo run --release
 ### Sound ###
 Generated using the config shown above while adjusting the RPM manually: [Audio file](https://raw.githubusercontent.com/DasEtwas/enginesound/master/example_ff0d902.mp3)
 
+## Packaging ##
+### Windows ###
+Just be sure that SDL2.dll is next to the .exe
+
+### Linux ###
+SDL2 will need to be installed to run
+
 ## Licensing ##
 
 MIT License
