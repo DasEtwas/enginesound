@@ -27,6 +27,12 @@ To run the application, simply use
 cargo run --release
 ```
 
+## Preview ##
+### GUI ###
+![Image](gui_ff0d902.PNG)
+
+### Sound ###
+Generated using the config shown above while adjusting the RPM manually: [Audio file](https://raw.githubusercontent.com/DasEtwas/enginesound/master/example_ff0d902.mp3)
 
 ## Licensing ##
 
