@@ -1,4 +1,4 @@
-use crate::{distance_to_samples, gen::Generator, recorder::Recorder, samples_to_distance, MAX_CYLINDERS, SAMPLE_RATE, SPEED_OF_SOUND};
+use crate::{distance_to_samples, gen::Generator, recorder::Recorder, samples_to_distance, MAX_CYLINDERS, MUFFLER_ELEMENT_COUNT, SAMPLE_RATE, SPEED_OF_SOUND};
 use chrono::{Datelike, Local, Timelike};
 use conrod_core::{position::{Align, Direction, Padding, Relative},
                   *};
@@ -50,6 +50,7 @@ pub struct Ids {
     pub muffler_straight_pipe_alpha:            widget::Id,
     pub muffler_straight_pipe_beta:             widget::Id,
     pub muffler_straight_pipe_length:           widget::Id,
+    pub muffler_element_length:                 Vec<widget::Id>,
     pub cylinder_title:                         widget::Id,
     pub cylinder_offset_growl:                  widget::Id,
     pub cylinder_num:                           widget::Id,
@@ -97,6 +98,7 @@ impl Ids {
             muffler_straight_pipe_alpha:            generator.next(),
             muffler_straight_pipe_beta:             generator.next(),
             muffler_straight_pipe_length:           generator.next(),
+            muffler_element_length:                 (0..MUFFLER_ELEMENT_COUNT).map(|_| generator.next()).collect(),
             cylinder_title:                         generator.next(),
             cylinder_offset_growl:                  generator.next(),
             cylinder_num:                           generator.next(),
@@ -426,7 +428,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = 1.0;
                 let prev_val = generator.engine.muffler.straight_pipe.alpha;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("muffler_straight_pipe_alpha {:.2}", prev_val).as_str())
+                    .label(format!("straight_pipe_alpha {:.2}", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(7.0)
@@ -441,7 +443,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = 1.0;
                 let prev_val = generator.engine.muffler.straight_pipe.beta;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("muffler_straight_pipe_beta {:.2}", prev_val).as_str())
+                    .label(format!("straight_pipe_beta {:.2}", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(7.0)
@@ -457,7 +459,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = 3.0;
                 let prev_val = generator.engine.muffler.straight_pipe.chamber0.samples.len as f32 * SPEED_OF_SOUND / SAMPLE_RATE as f32;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("muffler_straight_pipe_length {:.2}m", prev_val).as_str())
+                    .label(format!("straight_pipe_length {:.2}m", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(7.0)
@@ -467,6 +469,31 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                     let beta = generator.engine.muffler.straight_pipe.beta;
                     if let Some(newgen) = generator.engine.muffler.straight_pipe.update((value / SPEED_OF_SOUND * SAMPLE_RATE as f32) as usize, alpha, beta) {
                         generator.engine.muffler.straight_pipe = newgen;
+                    }
+                }
+            }
+
+            for (i, mut muffler_element) in generator.engine.muffler.muffler_elements.iter_mut().enumerate() {
+                // element_length
+                {
+                    const MIN: f32 = 0.001;
+                    const MAX: f32 = 0.6;
+                    let prev_val = samples_to_distance(muffler_element.chamber0.samples.len);
+                    for value in widget::Slider::new(prev_val, MIN, MAX)
+                        .label(format!("{} / element_length {:.2}m", i + 1, prev_val).as_str())
+                        .label_font_size(12)
+                        .padded_w_of(ids.canvas, PAD)
+                        .down(5.0)
+                        .set(ids.muffler_element_length[i], ui)
+                    {
+                        let new = muffler_element.update(distance_to_samples(value), muffler_element.alpha, muffler_element.beta);
+
+                        match new {
+                            Some(new) => {
+                                muffler_element.clone_from(&new);
+                            },
+                            None => (),
+                        }
                     }
                 }
             }

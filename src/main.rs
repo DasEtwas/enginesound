@@ -71,7 +71,7 @@ fn main() {
 
         intake_valve_shift: 0.0,
         exhaust_valve_shift: 0.0,
-        crankshaft_fluctuation: 0.17,
+        crankshaft_fluctuation: 0.03,
         crankshaft_fluctuation_lp: LowPassFilter::new(350.0, SAMPLE_RATE),
         // running values
         /// crankshaft position, 0.0-1.0
