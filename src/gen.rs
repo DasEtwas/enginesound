@@ -150,9 +150,9 @@ impl Cylinder {
 
     /// called after pop
     pub(in crate::gen) fn push(&mut self, intake: f32) {
-        let ex_in = self.exhaust_waveguide.alpha.abs() * self.cyl_pressure * 0.5 * self.pressure_release_factor;
+        let ex_in = (1.0 - self.exhaust_waveguide.alpha.abs()) * self.cyl_pressure * 0.5 * self.pressure_release_factor;
         self.exhaust_waveguide.push(ex_in, self.extractor_exhaust);
-        let in_in = self.intake_waveguide.alpha.abs() * self.cyl_pressure * 0.5 * self.pressure_release_factor;
+        let in_in = (1.0 - self.intake_waveguide.alpha.abs()) * self.cyl_pressure * 0.5 * self.pressure_release_factor;
         self.intake_waveguide.push(in_in, intake);
 
         self.cyl_pressure -= ex_in + in_in;

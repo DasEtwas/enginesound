@@ -534,14 +534,16 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MIN: f32 = 0.0;
                 const MAX: f32 = 1.0;
                 for value in widget::Slider::new(growl, MIN, MAX)
-                    .label(format!("Growl (cylinder crank offset assymetry) {}", growl).as_str())
+                    .label(format!("Growl (cylinder crank offset assymetry) {:.3}", growl).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(5.0)
                     .set(ids.cylinder_offset_growl, ui)
                 {
-                    changed = true;
-                    growl = if value.is_normal() { value } else { 0.0 };
+                    if (growl - value).abs() > 1E-3 || !value.is_normal() {
+                        changed = true;
+                        growl = if value.is_normal() { value } else { 0.0 };
+                    }
                 }
             }
 
