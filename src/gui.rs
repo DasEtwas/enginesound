@@ -50,6 +50,7 @@ pub struct Ids {
     pub muffler_straight_pipe_alpha:            widget::Id,
     pub muffler_straight_pipe_beta:             widget::Id,
     pub muffler_straight_pipe_length:           widget::Id,
+    pub engine_muffler_open_end_refl:           widget::Id,
     pub muffler_element_length:                 Vec<widget::Id>,
     pub cylinder_title:                         widget::Id,
     pub cylinder_offset_growl:                  widget::Id,
@@ -98,6 +99,7 @@ impl Ids {
             muffler_straight_pipe_alpha:            generator.next(),
             muffler_straight_pipe_beta:             generator.next(),
             muffler_straight_pipe_length:           generator.next(),
+            engine_muffler_open_end_refl:           generator.next(),
             muffler_element_length:                 (0..MUFFLER_ELEMENT_COUNT).map(|_| generator.next()).collect(),
             cylinder_title:                         generator.next(),
             cylinder_offset_growl:                  generator.next(),
@@ -190,7 +192,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
         {
             let prev_val = generator.get_rpm();
             for value in widget::Slider::new(prev_val, 300.0, 13000.0)
-                .label(format!("Engine RPM {:.2}", prev_val).as_str())
+                .label(format!("Engine RPM {:.2} ({:.1} hz)", prev_val, prev_val / 60.0).as_str())
                 .label_font_size(12)
                 .align_left()
                 .padded_w_of(ids.canvas, PAD)
@@ -334,7 +336,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = SAMPLE_RATE as f32;
                 let prev_val = generator.engine.intake_noise_lp.get_freq();
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("intake_noise_lowpassfilter_freq {:.2}hz", prev_val).as_str())
+                    .label(format!("Intake noise Lowpass-Filter Frequency {:.2}hz", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(7.0)
@@ -355,7 +357,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = 0.5;
                 let prev_val = generator.engine.intake_valve_shift;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("intake_valve_shift {:.2}", prev_val).as_str())
+                    .label(format!("Intake valve cam shift {:.2} cycles", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(5.0)
@@ -370,7 +372,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = 0.5;
                 let prev_val = generator.engine.exhaust_valve_shift;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("exhaust_valve_shift {:.2}", prev_val).as_str())
+                    .label(format!("Exhaust valve cam shift {:.2} cycles", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(5.0)
@@ -383,10 +385,10 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
             // crankshaft_fluctuation
             {
                 const MIN: f32 = 0.0;
-                const MAX: f32 = 0.5;
+                const MAX: f32 = 2.5; // lower filter frequencies require more amplitude so its noticable
                 let prev_val = generator.engine.crankshaft_fluctuation;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("crankshaft_fluctuation {:.2}", prev_val).as_str())
+                    .label(format!("Crankshaft fluctuation factor {:.2}x", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(5.0)
@@ -402,7 +404,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = SAMPLE_RATE as f32;
                 let prev_val = generator.engine.crankshaft_fluctuation_lp.get_freq();
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("crankshaft_fluctuation_lowpassfilter_freq {:.2}hz", prev_val).as_str())
+                    .label(format!("Crankshaft fluctuation noise Lowpass-Filter frequency {:.2}hz", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(7.0)
@@ -422,13 +424,13 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
         {
             widget::Text::new("Muffler parameters").font_size(16).down(7.0).w(ui.window_dim()[0] - PAD * 2.0).set(ids.muffler_title, ui);
 
-            // exhaust_pipe_alpha
+            // engine_muffler_straight_pipe_alpha
             {
                 const MIN: f32 = -1.0;
                 const MAX: f32 = 1.0;
                 let prev_val = generator.engine.muffler.straight_pipe.alpha;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("straight_pipe_alpha {:.2}", prev_val).as_str())
+                    .label(format!("Straight Pipe extractor-side reflectivity {:.2}", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(7.0)
@@ -437,13 +439,13 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                     generator.engine.muffler.straight_pipe.alpha = value;
                 }
             }
-            // engine_exhaust_pipe_beta
+            // engine_muffler_straight_pipe_beta
             {
                 const MIN: f32 = -1.0;
                 const MAX: f32 = 1.0;
                 let prev_val = generator.engine.muffler.straight_pipe.beta;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("straight_pipe_beta {:.2}", prev_val).as_str())
+                    .label(format!("Straight Pipe muffler-side reflectivity {:.2}", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(7.0)
@@ -459,7 +461,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = 3.0;
                 let prev_val = generator.engine.muffler.straight_pipe.chamber0.samples.len as f32 * SPEED_OF_SOUND / SAMPLE_RATE as f32;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("straight_pipe_length {:.2}m", prev_val).as_str())
+                    .label(format!("Straight Pipe length {:.2}m ({:.1}hz sine peak)", prev_val, SPEED_OF_SOUND / prev_val * 2.0).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(7.0)
@@ -473,14 +475,33 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 }
             }
 
-            for (i, mut muffler_element) in generator.engine.muffler.muffler_elements.iter_mut().enumerate() {
+            // muffler_open_end_refl
+            let mut muffler_elements_beta;
+            {
+                const MIN: f32 = -1.0;
+                const MAX: f32 = 1.0;
+                let prev_val = generator.engine.muffler.muffler_elements[0].beta;
+                muffler_elements_beta = prev_val;
+
+                for value in widget::Slider::new(prev_val, MIN, MAX)
+                    .label(format!("Muffler elements output-side (exhaust) reflectivity {:.2}x", prev_val).as_str())
+                    .label_font_size(12)
+                    .padded_w_of(ids.canvas, PAD)
+                    .down(5.0)
+                    .set(ids.engine_muffler_open_end_refl, ui)
+                {
+                    muffler_elements_beta = value;
+                }
+            }
+
+            for (i, muffler_element) in generator.engine.muffler.muffler_elements.iter_mut().enumerate() {
                 // element_length
                 {
                     const MIN: f32 = 0.001;
                     const MAX: f32 = 0.6;
                     let prev_val = samples_to_distance(muffler_element.chamber0.samples.len);
                     for value in widget::Slider::new(prev_val, MIN, MAX)
-                        .label(format!("{} / element_length {:.2}m", i + 1, prev_val).as_str())
+                        .label(format!("{} / Muffler cavity length {:.2}m ({:.1}hz sine peak)", i + 1, prev_val, SPEED_OF_SOUND / prev_val * 2.0).as_str())
                         .label_font_size(12)
                         .padded_w_of(ids.canvas, PAD)
                         .down(5.0)
@@ -496,6 +517,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                         }
                     }
                 }
+                muffler_element.beta = muffler_elements_beta;
             }
         }
 
@@ -512,7 +534,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MIN: f32 = 0.0;
                 const MAX: f32 = 1.0;
                 for value in widget::Slider::new(growl, MIN, MAX)
-                    .label(format!("growl {}", growl).as_str())
+                    .label(format!("Growl (cylinder crank offset assymetry) {}", growl).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(5.0)
@@ -528,7 +550,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = MAX_CYLINDERS as f32;
                 let prev_val = num_cylinders as f32;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("number of cylinders {}", prev_val).as_str())
+                    .label(format!("Cylinder count {}", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(5.0)
@@ -550,7 +572,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = 1.0;
                 let prev_val = cylinder.intake_open_refl;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("intake_open_refl {:.2}", prev_val).as_str())
+                    .label(format!("Opened intake valve intake-cavity reflectivity {:.2}", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(5.0)
@@ -566,7 +588,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = 1.0;
                 let prev_val = cylinder.intake_closed_refl;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("intake_closed_refl {:.2}", prev_val).as_str())
+                    .label(format!("Closed intake valve intake-cavity reflectivity {:.2}", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(5.0)
@@ -582,7 +604,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = 1.0;
                 let prev_val = cylinder.exhaust_open_refl;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("exhaust_open_refl {:.2}", prev_val).as_str())
+                    .label(format!("Opened exhaust valve exhaust-cavity reflectivity {:.2}", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(5.0)
@@ -598,7 +620,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = 1.0;
                 let prev_val = cylinder.exhaust_closed_refl;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("exhaust_closed_refl {:.2}", prev_val).as_str())
+                    .label(format!("Closed exhaust valve exhaust-cavity reflectivity {:.2}", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(5.0)
@@ -614,7 +636,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = 1.0;
                 let prev_val = cylinder.intake_waveguide.beta;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("cylinder_intake_open_end_refl {:.2}", prev_val).as_str())
+                    .label(format!("Intake-cavity open end reflectivity {:.2}", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(5.0)
@@ -630,7 +652,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = 1.0;
                 let prev_val = cylinder.extractor_waveguide.beta;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("cylinder_extractor_open_end_refl {:.2}", prev_val).as_str())
+                    .label(format!("Extractor-cavity straight pipe side reflectivity {:.2}", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(5.0)
@@ -646,7 +668,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = 5.0;
                 let prev_val = cylinder.piston_motion_factor;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("piston_motion_factor {:.2}", prev_val).as_str())
+                    .label(format!("Piston motion factor {:.2}", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(5.0)
@@ -662,7 +684,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = 5.0;
                 let prev_val = cylinder.ignition_factor;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("ignition_factor {:.2}", prev_val).as_str())
+                    .label(format!("Ignition factor {:.2}", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(5.0)
@@ -678,7 +700,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = 1.0;
                 let prev_val = cylinder.ignition_time;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("ignition_time {:.2}", prev_val).as_str())
+                    .label(format!("Ignition time {:.2}", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(5.0)
@@ -694,7 +716,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = 0.4;
                 let prev_val = 1.0 - cylinder.pressure_release_factor.powf(SAMPLE_RATE as f32);
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("pressure_release_time {:.6} sec", prev_val).as_str())
+                    .label(format!("Cylinder pressure release time {:.6} sec", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(5.0)
@@ -733,7 +755,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                     const MAX: f32 = 1.0;
                     let prev_val = samples_to_distance(cyl.intake_waveguide.chamber0.samples.len);
                     for value in widget::Slider::new(prev_val, MIN, MAX)
-                        .label(format!("{} / intake_pipe_length {:.2}m", i + 1, prev_val).as_str())
+                        .label(format!("{} / Intake-cavity length {:.2}m", i + 1, prev_val).as_str())
                         .label_font_size(12)
                         .padded_w_of(ids.canvas, PAD)
                         .down(5.0)
@@ -753,7 +775,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                     const MAX: f32 = 1.7;
                     let prev_val = samples_to_distance(cyl.exhaust_waveguide.chamber0.samples.len);
                     for value in widget::Slider::new(prev_val, MIN, MAX)
-                        .label(format!("{} / exhaust_pipe_length {:.2}m", i + 1, prev_val).as_str())
+                        .label(format!("{} / Exhaust-cavity length {:.2}m", i + 1, prev_val).as_str())
                         .label_font_size(12)
                         .padded_w_of(ids.canvas, PAD)
                         .down(5.0)
@@ -773,7 +795,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                     const MAX: f32 = 10.0;
                     let prev_val = samples_to_distance(cyl.extractor_waveguide.chamber0.samples.len);
                     for value in widget::Slider::new(prev_val, MIN, MAX)
-                        .label(format!("{} / extractor_pipe_length {:.2}m", i + 1, prev_val).as_str())
+                        .label(format!("{} / Extractor-cavity length {:.2}m", i + 1, prev_val).as_str())
                         .label_font_size(12)
                         .padded_w_of(ids.canvas, PAD)
                         .down(5.0)
