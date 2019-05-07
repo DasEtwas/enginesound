@@ -1,4 +1,4 @@
-use crate::{gen::Generator, recorder::Recorder, SAMPLE_RATE, SPEED_OF_SOUND};
+use crate::{distance_to_samples, gen::Generator, recorder::Recorder, samples_to_distance, MAX_CYLINDERS, SAMPLE_RATE, SPEED_OF_SOUND};
 use chrono::{Datelike, Local, Timelike};
 use conrod_core::{position::{Align, Direction, Padding, Relative},
                   *};
@@ -28,66 +28,120 @@ pub fn theme() -> conrod_core::Theme {
 }
 
 // Generate a unique `WidgetId` for each widget.
-widget_ids! {
-    pub struct Ids {
-        // The scrollable canvas.
-        canvas,
-        // The title and introduction widgets.
-        title,
-        duty_display,
-        record_button,
-        reset_button,
-        engine_rpm_slider,
-        engine_master_volume_slider,
-        engine_intake_volume_slider,
-        engine_exhaust_volume_slider,
-        engine_engine_vibrations_volume_slider,
+pub struct Ids {
+    pub canvas:                                 widget::Id,
+    pub title:                                  widget::Id,
+    pub duty_display:                           widget::Id,
+    pub record_button:                          widget::Id,
+    pub reset_button:                           widget::Id,
+    pub engine_rpm_slider:                      widget::Id,
+    pub engine_master_volume_slider:            widget::Id,
+    pub engine_intake_volume_slider:            widget::Id,
+    pub engine_intake_lp_filter_freq:           widget::Id,
+    pub engine_exhaust_volume_slider:           widget::Id,
+    pub engine_engine_vibrations_volume_slider: widget::Id,
+    pub engine_title:                           widget::Id,
+    pub engine_intake_noise_factor:             widget::Id,
+    pub engine_intake_valve_shift:              widget::Id,
+    pub engine_exhaust_valve_shift:             widget::Id,
+    pub engine_crankshaft_fluctuation_lp_freq:  widget::Id,
+    pub engine_crankshaft_fluctuation:          widget::Id,
+    pub muffler_title:                          widget::Id,
+    pub muffler_straight_pipe_alpha:            widget::Id,
+    pub muffler_straight_pipe_beta:             widget::Id,
+    pub muffler_straight_pipe_length:           widget::Id,
+    pub cylinder_title:                         widget::Id,
+    pub cylinder_offset_growl:                  widget::Id,
+    pub cylinder_num:                           widget::Id,
+    pub cylinder_crank_offset:                  widget::Id,
+    pub cylinder_intake_open_refl:              widget::Id,
+    pub cylinder_intake_closed_refl:            widget::Id,
+    pub cylinder_exhaust_open_refl:             widget::Id,
+    pub cylinder_exhaust_closed_refl:           widget::Id,
+    pub cylinder_intake_open_end_refl:          widget::Id,
+    pub cylinder_extractor_open_end_refl:       widget::Id,
+    pub cylinder_piston_motion_factor:          widget::Id,
+    pub cylinder_ignition_factor:               widget::Id,
+    pub cylinder_ignition_time:                 widget::Id,
+    pub cylinder_pressure_release_factor:       widget::Id,
+    pub cylinder_intake_pipe_length:            Vec<widget::Id>,
+    pub cylinder_exhaust_pipe_length:           Vec<widget::Id>,
+    pub cylinder_extractor_pipe_length:         Vec<widget::Id>,
+    pub graph:                                  widget::Id,
+    pub canvas_scrollbar:                       widget::Id,
+}
 
-        engine_title,
-        muffler_straight_pipe_alpha,
-        muffler_straight_pipe_beta,
-        muffler_straight_pipe_length,
-        engine_intake_noise_factor,
-        engine_intake_valve_shift,
-        engine_exhaust_valve_shift,
-        engine_crankshaft_fluctuation,
-
-        cylinder_title,
-        cylinder_offset_growl,
-        cylinder_num,
-        cylinder_crank_offset,
-        cylinder_intake_open_refl,
-        cylinder_intake_closed_refl,
-        cylinder_exhaust_open_refl,
-        cylinder_exhaust_closed_refl,
-        cylinder_intake_open_end_refl,
-        cylinder_extractor_open_end_refl,
-        cylinder_piston_motion_factor,
-        cylinder_ignition_factor,
-        cylinder_ignition_time,
-        cylinder_pressure_release_factor,
-
-        graph,
-
-        canvas_scrollbar,
+// expanded widget_ids! generator macro
+impl Ids {
+    #[allow(unused_mut, unused_variables)]
+    pub fn new(mut generator: widget::id::Generator) -> Self {
+        Ids {
+            canvas:                                 generator.next(),
+            title:                                  generator.next(),
+            duty_display:                           generator.next(),
+            record_button:                          generator.next(),
+            reset_button:                           generator.next(),
+            engine_rpm_slider:                      generator.next(),
+            engine_master_volume_slider:            generator.next(),
+            engine_intake_volume_slider:            generator.next(),
+            engine_intake_lp_filter_freq:           generator.next(),
+            engine_exhaust_volume_slider:           generator.next(),
+            engine_engine_vibrations_volume_slider: generator.next(),
+            engine_title:                           generator.next(),
+            engine_intake_noise_factor:             generator.next(),
+            engine_intake_valve_shift:              generator.next(),
+            engine_exhaust_valve_shift:             generator.next(),
+            engine_crankshaft_fluctuation_lp_freq:  generator.next(),
+            engine_crankshaft_fluctuation:          generator.next(),
+            muffler_title:                          generator.next(),
+            muffler_straight_pipe_alpha:            generator.next(),
+            muffler_straight_pipe_beta:             generator.next(),
+            muffler_straight_pipe_length:           generator.next(),
+            cylinder_title:                         generator.next(),
+            cylinder_offset_growl:                  generator.next(),
+            cylinder_num:                           generator.next(),
+            cylinder_crank_offset:                  generator.next(),
+            cylinder_intake_open_refl:              generator.next(),
+            cylinder_intake_closed_refl:            generator.next(),
+            cylinder_exhaust_open_refl:             generator.next(),
+            cylinder_exhaust_closed_refl:           generator.next(),
+            cylinder_intake_open_end_refl:          generator.next(),
+            cylinder_extractor_open_end_refl:       generator.next(),
+            cylinder_piston_motion_factor:          generator.next(),
+            cylinder_ignition_factor:               generator.next(),
+            cylinder_ignition_time:                 generator.next(),
+            cylinder_pressure_release_factor:       generator.next(),
+            cylinder_intake_pipe_length:            (0..MAX_CYLINDERS).map(|_| generator.next()).collect(),
+            cylinder_exhaust_pipe_length:           (0..MAX_CYLINDERS).map(|_| generator.next()).collect(),
+            cylinder_extractor_pipe_length:         (0..MAX_CYLINDERS).map(|_| generator.next()).collect(),
+            graph:                                  generator.next(),
+            canvas_scrollbar:                       generator.next(),
+        }
     }
 }
 
 /// Instantiate a GUI demonstrating every widget available in conrod.
 pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Generator>>) {
     const PAD_TOP: conrod_core::Scalar = 10.0;
-    const PAD: conrod_core::Scalar = 20.0;
+    const PAD: conrod_core::Scalar = 30.0;
+    const BUTTONWIDTH: conrod_core::Scalar = 700.0;
 
     widget::Canvas::new().pad(PAD).pad_right(PAD + 20.0).pad_top(0.0).scroll_kids_vertically().set(ids.canvas, ui);
+    widget::Scrollbar::y_axis(ids.canvas).auto_hide(true).w(25.0).set(ids.canvas_scrollbar, ui);
 
-    widget::Text::new("Engine Sound Generator").font_size(24).top_left_with_margins(PAD_TOP, PAD).w(ui.win_w - PAD * 2.0).set(ids.title, ui);
+    widget::Text::new("Engine Sound Generator")
+        .font_size(24)
+        .top_left_with_margins(PAD_TOP, PAD)
+        .w(ui.win_w - PAD * 2.0)
+        .mid_left_of(ids.canvas)
+        .set(ids.title, ui);
 
     {
         let mut generator = generator.write();
-        widget::Text::new(format!("Current sampler duty: {:.2}%", generator.sampler_duty * 100.0).as_str()).down(7.0).set(ids.duty_display, ui);
+        widget::Text::new(format!("Current sampler duty: {:.2}%", generator.sampler_duty * 100.0).as_str()).down(7.0).w(700.0).set(ids.duty_display, ui);
 
         {
-            let (button_label, remove_recorder) = match &mut generator.recorder {
+            let (mut button_label, remove_recorder) = match &mut generator.recorder {
                 None => ("Start recording".to_string(), false),
                 Some(recorder) => {
                     if recorder.is_running() {
@@ -99,11 +153,15 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 },
             };
 
+            if generator.recording_currently_clipping {
+                button_label.push_str("   !!Recording clipping!! (decrease master volume)");
+            }
+
             if remove_recorder {
                 generator.recorder = None;
             }
 
-            for _press in widget::Button::new().label(button_label.as_str()).down(7.0).set(ids.record_button, ui) {
+            for _press in widget::Button::new().left_justify_label().label(button_label.as_str()).down(7.0).w(BUTTONWIDTH).set(ids.record_button, ui) {
                 match &mut generator.recorder {
                     None => {
                         generator.recorder = Some(Recorder::new(recording_name()));
@@ -116,16 +174,23 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
         }
 
         {
-            for _press in widget::Button::new().label("Reset sampler").down(5.0).set(ids.reset_button, ui) {
+            let mut reset_sampler_label = String::from("Reset sampler");
+
+            if generator.waveguides_dampened {
+                reset_sampler_label.push_str("   !!Resonances dampened!! (change parameters)");
+            }
+
+            for _press in widget::Button::new().left_justify_label().label(reset_sampler_label.as_str()).down(5.0).w(BUTTONWIDTH).set(ids.reset_button, ui) {
                 generator.reset();
             }
         }
 
         {
             let prev_val = generator.get_rpm();
-            for value in widget::Slider::new(prev_val, 300.0, 9000.0)
+            for value in widget::Slider::new(prev_val, 300.0, 13000.0)
                 .label(format!("Engine RPM {:.2}", prev_val).as_str())
                 .label_font_size(12)
+                .align_left()
                 .padded_w_of(ids.canvas, PAD)
                 .down(5.0)
                 .set(ids.engine_rpm_slider, ui)
@@ -246,6 +311,115 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
         }
         widget::Text::new("Engine parameters").font_size(16).down(7.0).w(ui.window_dim()[0] - PAD * 2.0).set(ids.engine_title, ui);
         {
+            // intake_noise_factor
+            {
+                const MIN: f32 = 0.0;
+                const MAX: f32 = 3.0;
+                let prev_val = generator.engine.intake_noise_factor;
+                for value in widget::Slider::new(prev_val, MIN, MAX)
+                    .label(format!("intake_noise_factor {:.2}", prev_val).as_str())
+                    .label_font_size(12)
+                    .padded_w_of(ids.canvas, PAD)
+                    .down(7.0)
+                    .set(ids.engine_intake_noise_factor, ui)
+                {
+                    generator.engine.intake_noise_factor = value;
+                }
+            }
+            // intake_noise_lowpassfilter_freq
+            {
+                const MIN: f32 = 10.0;
+                const MAX: f32 = SAMPLE_RATE as f32;
+                let prev_val = generator.engine.intake_noise_lp.get_freq();
+                for value in widget::Slider::new(prev_val, MIN, MAX)
+                    .label(format!("intake_noise_lowpassfilter_freq {:.2}hz", prev_val).as_str())
+                    .label_font_size(12)
+                    .padded_w_of(ids.canvas, PAD)
+                    .down(7.0)
+                    .skew(10.0)
+                    .set(ids.engine_intake_lp_filter_freq, ui)
+                {
+                    let new = generator.engine.intake_noise_lp.update(value);
+
+                    match new {
+                        Some(new) => generator.engine.intake_noise_lp = new,
+                        None => (),
+                    }
+                }
+            }
+            // intake_valve_shift
+            {
+                const MIN: f32 = -0.5;
+                const MAX: f32 = 0.5;
+                let prev_val = generator.engine.intake_valve_shift;
+                for value in widget::Slider::new(prev_val, MIN, MAX)
+                    .label(format!("intake_valve_shift {:.2}", prev_val).as_str())
+                    .label_font_size(12)
+                    .padded_w_of(ids.canvas, PAD)
+                    .down(5.0)
+                    .set(ids.engine_intake_valve_shift, ui)
+                {
+                    generator.engine.intake_valve_shift = value;
+                }
+            }
+            // exhaust_valve_shift
+            {
+                const MIN: f32 = -0.5;
+                const MAX: f32 = 0.5;
+                let prev_val = generator.engine.exhaust_valve_shift;
+                for value in widget::Slider::new(prev_val, MIN, MAX)
+                    .label(format!("exhaust_valve_shift {:.2}", prev_val).as_str())
+                    .label_font_size(12)
+                    .padded_w_of(ids.canvas, PAD)
+                    .down(5.0)
+                    .set(ids.engine_exhaust_valve_shift, ui)
+                {
+                    generator.engine.exhaust_valve_shift = value;
+                }
+            }
+
+            // crankshaft_fluctuation
+            {
+                const MIN: f32 = 0.0;
+                const MAX: f32 = 0.5;
+                let prev_val = generator.engine.crankshaft_fluctuation;
+                for value in widget::Slider::new(prev_val, MIN, MAX)
+                    .label(format!("crankshaft_fluctuation {:.2}", prev_val).as_str())
+                    .label_font_size(12)
+                    .padded_w_of(ids.canvas, PAD)
+                    .down(5.0)
+                    .set(ids.engine_crankshaft_fluctuation, ui)
+                {
+                    generator.engine.crankshaft_fluctuation = value;
+                }
+            }
+
+            // crankshaft_fluctuation_lowpassfilter_freq
+            {
+                const MIN: f32 = 10.0;
+                const MAX: f32 = SAMPLE_RATE as f32;
+                let prev_val = generator.engine.crankshaft_fluctuation_lp.get_freq();
+                for value in widget::Slider::new(prev_val, MIN, MAX)
+                    .label(format!("crankshaft_fluctuation_lowpassfilter_freq {:.2}hz", prev_val).as_str())
+                    .label_font_size(12)
+                    .padded_w_of(ids.canvas, PAD)
+                    .down(7.0)
+                    .skew(10.0)
+                    .set(ids.engine_crankshaft_fluctuation_lp_freq, ui)
+                {
+                    let new = generator.engine.crankshaft_fluctuation_lp.update(value);
+
+                    match new {
+                        Some(new) => generator.engine.crankshaft_fluctuation_lp = new,
+                        None => (),
+                    }
+                }
+            }
+        }
+
+        {
+            widget::Text::new("Muffler parameters").font_size(16).down(7.0).w(ui.window_dim()[0] - PAD * 2.0).set(ids.muffler_title, ui);
+
             // exhaust_pipe_alpha
             {
                 const MIN: f32 = -1.0;
@@ -296,68 +470,6 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                     }
                 }
             }
-
-            // intake_noise_factor
-            {
-                const MIN: f32 = 0.0;
-                const MAX: f32 = 3.0;
-                let prev_val = generator.engine.intake_noise_factor;
-                for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("intake_noise_factor {:.2}", prev_val).as_str())
-                    .label_font_size(12)
-                    .padded_w_of(ids.canvas, PAD)
-                    .down(7.0)
-                    .set(ids.engine_intake_noise_factor, ui)
-                {
-                    generator.engine.intake_noise_factor = value;
-                }
-            }
-            // intake_valve_shift
-            {
-                const MIN: f32 = -0.5;
-                const MAX: f32 = 0.5;
-                let prev_val = generator.engine.intake_valve_shift;
-                for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("intake_valve_shift {:.2}", prev_val).as_str())
-                    .label_font_size(12)
-                    .padded_w_of(ids.canvas, PAD)
-                    .down(5.0)
-                    .set(ids.engine_intake_valve_shift, ui)
-                {
-                    generator.engine.intake_valve_shift = value;
-                }
-            }
-            // exhaust_valve_shift
-            {
-                const MIN: f32 = -0.5;
-                const MAX: f32 = 0.5;
-                let prev_val = generator.engine.exhaust_valve_shift;
-                for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("exhaust_valve_shift {:.2}", prev_val).as_str())
-                    .label_font_size(12)
-                    .padded_w_of(ids.canvas, PAD)
-                    .down(5.0)
-                    .set(ids.engine_exhaust_valve_shift, ui)
-                {
-                    generator.engine.exhaust_valve_shift = value;
-                }
-            }
-
-            // crankshaft_fluctuation
-            {
-                const MIN: f32 = 0.0;
-                const MAX: f32 = 0.5;
-                let prev_val = generator.engine.crankshaft_fluctuation;
-                for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("crankshaft_fluctuation {:.2}", prev_val).as_str())
-                    .label_font_size(12)
-                    .padded_w_of(ids.canvas, PAD)
-                    .down(5.0)
-                    .set(ids.engine_crankshaft_fluctuation, ui)
-                {
-                    generator.engine.crankshaft_fluctuation = value;
-                }
-            }
         }
 
         widget::Text::new("Cylinder parameters").font_size(16).down(7.0).w(ui.window_dim()[0] - PAD * 2.0).set(ids.cylinder_title, ui);
@@ -386,7 +498,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
 
             {
                 const MIN: f32 = 1.0;
-                const MAX: f32 = 16.0;
+                const MAX: f32 = MAX_CYLINDERS as f32;
                 let prev_val = num_cylinders as f32;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
                     .label(format!("number of cylinders {}", prev_val).as_str())
@@ -570,12 +682,83 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 }
             }
 
+            // let cylinders = generator.engine.cylinders.clone();
+
             if changed {
                 generator.engine.cylinders.clear();
                 for i in 0..num_cylinders {
                     let mut cyl = cylinder.clone();
                     cyl.crank_offset = i as f32 / num_cylinders as f32 * (1.0 - growl);
                     generator.engine.cylinders.push(cyl);
+                }
+            }
+
+            for (i, mut cyl) in generator.engine.cylinders.iter_mut().enumerate() {
+                /*
+                exhaust_waveguide: WaveGuide::new(seconds_to_samples(0.7 / speed_of_sound), -1000.0, 0.0),
+                intake_waveguide:    WaveGuide::new(seconds_to_samples(0.7 / speed_of_sound), -1000.0, -0.5),
+                extractor_waveguide: WaveGuide::new(seconds_to_samples(1.0 / speed_of_sound), 0.0, 0.7),
+                */
+
+                // intake_pipe_length
+                {
+                    const MIN: f32 = 0.0;
+                    const MAX: f32 = 1.0;
+                    let prev_val = samples_to_distance(cyl.intake_waveguide.chamber0.samples.len);
+                    for value in widget::Slider::new(prev_val, MIN, MAX)
+                        .label(format!("{} / intake_pipe_length {:.2}m", i + 1, prev_val).as_str())
+                        .label_font_size(12)
+                        .padded_w_of(ids.canvas, PAD)
+                        .down(5.0)
+                        .set(ids.cylinder_intake_pipe_length[i], ui)
+                    {
+                        let new = cyl.intake_waveguide.update(distance_to_samples(value), cyl.intake_waveguide.alpha, cyl.intake_waveguide.beta);
+
+                        match new {
+                            Some(new) => cyl.intake_waveguide = new,
+                            None => (),
+                        }
+                    }
+                }
+                // exhaust_pipe_length
+                {
+                    const MIN: f32 = 0.0;
+                    const MAX: f32 = 1.7;
+                    let prev_val = samples_to_distance(cyl.exhaust_waveguide.chamber0.samples.len);
+                    for value in widget::Slider::new(prev_val, MIN, MAX)
+                        .label(format!("{} / exhaust_pipe_length {:.2}m", i + 1, prev_val).as_str())
+                        .label_font_size(12)
+                        .padded_w_of(ids.canvas, PAD)
+                        .down(5.0)
+                        .set(ids.cylinder_exhaust_pipe_length[i], ui)
+                    {
+                        let new = cyl.exhaust_waveguide.update(distance_to_samples(value), cyl.exhaust_waveguide.alpha, cyl.exhaust_waveguide.beta);
+
+                        match new {
+                            Some(new) => cyl.exhaust_waveguide = new,
+                            None => (),
+                        }
+                    }
+                }
+                // extractor_pipe_length
+                {
+                    const MIN: f32 = 0.0;
+                    const MAX: f32 = 10.0;
+                    let prev_val = samples_to_distance(cyl.extractor_waveguide.chamber0.samples.len);
+                    for value in widget::Slider::new(prev_val, MIN, MAX)
+                        .label(format!("{} / extractor_pipe_length {:.2}m", i + 1, prev_val).as_str())
+                        .label_font_size(12)
+                        .padded_w_of(ids.canvas, PAD)
+                        .down(5.0)
+                        .set(ids.cylinder_extractor_pipe_length[i], ui)
+                    {
+                        let new = cyl.extractor_waveguide.update(distance_to_samples(value), cyl.extractor_waveguide.alpha, cyl.extractor_waveguide.beta);
+
+                        match new {
+                            Some(new) => cyl.extractor_waveguide = new,
+                            None => (),
+                        }
+                    }
                 }
             }
         }
@@ -603,8 +786,6 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
             widget::PlotPath::new(0.0, 1.0, -3.0, 3.0, |x| generator.gui_graph[(x * len) as usize].min(1.0).max(-1.0) * 3.0).set(ids.graph, ui);
         }
     }
-
-    widget::Scrollbar::y_axis(ids.canvas).auto_hide(false).set(ids.canvas_scrollbar, ui);
 }
 
 fn recording_name() -> String {

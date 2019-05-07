@@ -21,33 +21,29 @@ const SAMPLES_PER_CALLBACK: u32 = 512;
 const WINDOW_WIDTH: f64 = 800.0;
 const WINDOW_HEIGHT: f64 = 800.0;
 const DC_OFFSET_LP_FREQ: f32 = 4.0; // the frequency of the low pass filter which is subtracted from all samples to reduce dc offset and thus clipping
+const MAX_CYLINDERS: usize = 16;
+const MUFFLER_ELEMENT_COUNT: usize = 4;
 
 fn main() {
-    let num_cylinders = 1;
+    let num_cylinders = 3;
     let mut cylinders = Vec::with_capacity(num_cylinders);
-
-    /// converts a given amount of time into samples
-    fn seconds_to_samples(seconds: f32) -> usize {
-        (seconds * SAMPLE_RATE as f32).max(1.0) as usize
-    }
-
-    let speed_of_sound = 343.0; // m/s
 
     for i in 0..num_cylinders {
         cylinders.push(Cylinder {
             crank_offset: i as f32 / num_cylinders as f32,
             // alpha is set while running, exhaust_openside_refl: 0.1
-            exhaust_waveguide: WaveGuide::new(seconds_to_samples(0.7 / speed_of_sound), -1000.0, 0.0),
+            exhaust_waveguide: WaveGuide::new(distance_to_samples(0.8), -1000.0, 0.06),
             // alpha is set while running, beta is intake_openside_refl:  -0.5
-            intake_waveguide:    WaveGuide::new(seconds_to_samples(0.7 / speed_of_sound), -1000.0, -0.5),
-            extractor_waveguide: WaveGuide::new(seconds_to_samples(1.0 / speed_of_sound), 0.0, 0.7),
-            intake_open_refl:    1.0,
-            intake_closed_refl:  0.0,
-            exhaust_open_refl:   1.0,
-            exhaust_closed_refl: 0.0,
+            intake_waveguide:    WaveGuide::new(distance_to_samples(0.8), -1000.0, -0.5),
+            extractor_waveguide: WaveGuide::new(distance_to_samples(0.8), 0.0, 0.7),
 
-            piston_motion_factor:    0.6,
-            ignition_factor:         1.9,
+            intake_open_refl:    0.0,
+            intake_closed_refl:  1.0,
+            exhaust_open_refl:   0.0,
+            exhaust_closed_refl: 1.0,
+
+            piston_motion_factor:    1.8,
+            ignition_factor:         2.6,
             ignition_time:           0.2,
             pressure_release_factor: (1.0 - 0.04f32).powf(1.0 / SAMPLE_RATE as f32),
 
@@ -64,16 +60,13 @@ fn main() {
         cylinders,
         intake_noise: Noise::default(),
         intake_noise_factor: 0.6,
-        intake_lp_filter: LowPassFilter::new(2000.0, SAMPLE_RATE),
+        intake_noise_lp: LowPassFilter::new(2000.0, SAMPLE_RATE),
         engine_vibration_filter: LowPassFilter::new(300.0, SAMPLE_RATE),
         muffler: Muffler {
-            muffler_elements: [
-                WaveGuide::new(seconds_to_samples(0.05 / speed_of_sound), -0.5, -0.5),
-                WaveGuide::new(seconds_to_samples(0.15 / speed_of_sound), -0.5, -0.5),
-                WaveGuide::new(seconds_to_samples(0.35 / speed_of_sound), -0.5, -0.5),
-                WaveGuide::new(seconds_to_samples(0.48 / speed_of_sound), -0.5, -0.5),
-            ],
-            straight_pipe:    WaveGuide::new(seconds_to_samples(2.0 / speed_of_sound), -0.2, -0.2),
+            muffler_elements: (0..MUFFLER_ELEMENT_COUNT)
+                .map(|i| WaveGuide::new(distance_to_samples(0.05 * i as f32 * f32::powf(0.87, i as f32)), 0.0, -0.5))
+                .collect(),
+            straight_pipe:    WaveGuide::new(distance_to_samples(0.5), 0.08, 0.25),
         },
 
         intake_valve_shift: 0.0,
@@ -100,9 +93,11 @@ fn main() {
         // Build the window.
         let mut events_loop = glium::glutin::EventsLoop::new();
         let window = glium::glutin::WindowBuilder::new()
-            .with_resizable(false)
             .with_title("Engine Sound Generator")
-            .with_dimensions((WINDOW_WIDTH, WINDOW_HEIGHT).into());
+            .with_dimensions((WINDOW_WIDTH, WINDOW_HEIGHT).into())
+            .with_max_dimensions((WINDOW_WIDTH + 1.0, WINDOW_HEIGHT + 1.0).into())
+            .with_min_dimensions((WINDOW_WIDTH, WINDOW_HEIGHT).into())
+            .with_resizable(true);
         let context = glium::glutin::ContextBuilder::new().with_vsync(true).with_multisampling(4);
         let display = glium::Display::new(window, context, &events_loop).unwrap();
         let display = support::GliumDisplayWinitWrapper(display);
@@ -159,4 +154,23 @@ fn main() {
 
     // audio lives until here
     std::mem::drop(audio);
+}
+
+/// converts a given amount of time into samples
+pub fn seconds_to_samples(seconds: f32) -> usize {
+    (seconds * SAMPLE_RATE as f32).max(1.0) as usize
+}
+
+/// converts a given distance into samples via the speed of sound
+pub fn distance_to_samples(meters: f32) -> usize {
+    seconds_to_samples(meters / SPEED_OF_SOUND)
+}
+
+pub fn samples_to_seconds(samples: usize) -> f32 {
+    samples as f32 / SAMPLE_RATE as f32
+}
+
+/// returns meters
+pub fn samples_to_distance(samples: usize) -> f32 {
+    samples_to_seconds(samples) * SPEED_OF_SOUND
 }
