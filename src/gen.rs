@@ -6,6 +6,12 @@
 //!
 
 use crate::{recorder::Recorder, SAMPLES_PER_CALLBACK};
+
+#[cfg(target_arch = "x86")]
+use std::arch::x86::*;
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64::*;
+
 use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use serde::{Deserialize, Serialize};
@@ -453,12 +459,7 @@ impl LoopBuffer {
     /// Creates a new loop buffer with specifies length.
     /// The internal sample buffer size is rounded up to the currently best SIMD implementation's float vector size.
     pub fn new(len: usize, samples_per_second: u32) -> LoopBuffer {
-        simd_runtime_generate!(
-            fn get_best_simd_size(size: usize) -> usize {
-                ((size - 1) / S::VF32_WIDTH + 1) * S::VF32_WIDTH
-            }
-        );
-        let bufsize = get_best_simd_size_runtime_select(len);
+        let bufsize = LoopBuffer::get_best_simd_size(len);
         LoopBuffer {
             delay: len as f32 / samples_per_second as f32,
             len,
@@ -467,9 +468,23 @@ impl LoopBuffer {
         }
     }
 
+    /// Returns `(size / SIMD_REGISTER_SIZE).ceil() * SIMD_REGISTER_SIZE`, where `SIMD` may be the best simd implementation at runtime.
+    /// Used to create vectors to make simd iteration easier
+    pub fn get_best_simd_size(size: usize) -> usize {
+        if is_x86_feature_detected!("avx2") {
+            ((size - 1) / Avx2::VF32_WIDTH + 1) * Avx2::VF32_WIDTH
+        } else if is_x86_feature_detected!("sse4.1") {
+            ((size - 1) / Sse41::VF32_WIDTH + 1) * Sse41::VF32_WIDTH
+        } else if is_x86_feature_detected!("sse2") {
+            ((size - 1) / Sse2::VF32_WIDTH + 1) * Sse2::VF32_WIDTH
+        } else {
+            ((size - 1) / Scalar::VF32_WIDTH + 1) * Scalar::VF32_WIDTH
+        }
+    }
+
     /// Sets the value at the current position. Must be called with `pop`.
     /// ```rust
-    /// // assuming SIMD is in scalar mode
+    /// // assuming Simd is Scalar
     /// let mut lb = LoopBuffer::new(2);
     /// lb.push(1.0);
     /// lb.advance();
@@ -515,24 +530,32 @@ impl LowPassFilter {
         self.samples.push(sample);
         self.samples.advance();
 
-        simd_runtime_generate!(
-            fn sum(samples: &[f32]) -> f32 {
-                let mut i = S::VF32_WIDTH;
-                let len = samples.len();
-                assert_eq!(len % S::VF32_WIDTH, 0, "LoopBuffer length is not a multiple of the SIMD vector size");
+        unsafe fn sum<S: Simd>(samples: &[f32]) -> f32 {
+            let mut i = S::VF32_WIDTH;
+            let len = samples.len();
+            assert_eq!(len % S::VF32_WIDTH, 0, "LoopBuffer length is not a multiple of the SIMD vector size");
 
-                // rolling sum
-                let mut sum = S::loadu_ps(&samples[0]);
+            // rolling sum
+            let mut sum = S::loadu_ps(&samples[0]);
 
-                while i != len {
-                    sum += S::loadu_ps(&samples[i]);
-                    i += S::VF32_WIDTH;
-                }
-                S::horizontal_add_ps(sum) / len as f32
+            while i != len {
+                sum += S::loadu_ps(&samples[i]);
+                i += S::VF32_WIDTH;
             }
-        );
 
-        sum_runtime_select(&self.samples.data)
+            S::horizontal_add_ps(sum) / len as f32
+        }
+
+        // expanded 'simd_runtime_select' macro for feature independency (procedural_macro_hygiene)
+        if is_x86_feature_detected!("avx2") {
+            unsafe { sum::<Avx2>(&self.samples.data) }
+        } else if is_x86_feature_detected!("sse4.1") {
+            unsafe { sum::<Sse41>(&self.samples.data) }
+        } else if is_x86_feature_detected!("sse2") {
+            unsafe { sum::<Sse2>(&self.samples.data) }
+        } else {
+            unsafe { sum::<Scalar>(&self.samples.data) }
+        }
     }
 
     pub fn update(&mut self, freq: f32, samples_per_second: u32) -> Option<Self> {

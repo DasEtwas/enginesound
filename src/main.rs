@@ -1,5 +1,3 @@
-#![feature(proc_macro_hygiene)]
-
 use crate::gen::{Cylinder, Engine, LowPassFilter, Muffler, Noise, WaveGuide};
 use parking_lot::RwLock;
 
