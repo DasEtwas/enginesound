@@ -27,10 +27,13 @@ pub struct Muffler {
 
 #[derive(Serialize, Deserialize)]
 pub struct Engine {
-    pub rpm: f32,
+    pub rpm:                      f32,
+    pub intake_volume:            f32,
+    pub exhaust_volume:           f32,
+    pub engine_vibrations_volume: f32,
 
     pub cylinders: Vec<Cylinder>,
-    #[serde(skip_serializing, skip_deserializing)]
+    #[serde(skip)]
     pub intake_noise: Noise,
     pub intake_noise_factor: f32,
     pub intake_noise_lp: LowPassFilter,
@@ -44,8 +47,11 @@ pub struct Engine {
     pub crankshaft_fluctuation_lp: LowPassFilter,
     // running values
     /// crankshaft position, 0.0-1.0
+    #[serde(skip)]
     pub crankshaft_pos: f32,
+    #[serde(skip)]
     pub exhaust_collector: f32,
+    #[serde(skip)]
     pub intake_collector: f32,
 }
 
@@ -115,8 +121,11 @@ pub struct Cylinder {
     pub pressure_release_factor: f32,
 
     // running values
-    pub cyl_sound:         f32,
-    pub cyl_pressure:      f32,
+    #[serde(skip)]
+    pub cyl_sound: f32,
+    #[serde(skip)]
+    pub cyl_pressure: f32,
+    #[serde(skip)]
     pub extractor_exhaust: f32,
 }
 
@@ -159,17 +168,11 @@ impl Cylinder {
     }
 }
 
-#[derive(Serialize, Deserialize)]
 pub struct Generator {
     pub sampler_duty: f32,
-    #[serde(skip_serializing, skip_deserializing)]
     pub recorder: Option<Recorder>,
-    #[serde(skip_serializing, skip_deserializing)]
     pub gui_graph: Vec<f32>,
     pub volume: f32,
-    pub intake_volume: f32,
-    pub exhaust_volume: f32,
-    pub engine_vibrations_volume: f32,
     pub samples_per_second: u32,
     pub engine: Engine,
     /// `LowPassFilter` which is subtracted from the sample while playing back to reduce dc offset and thus clipping
@@ -187,9 +190,6 @@ impl Generator {
             recorder: None,
             gui_graph: vec![0.0; 2 * SAMPLES_PER_CALLBACK as usize],
             volume: 0.1_f32,
-            intake_volume: 0.333_f32,
-            exhaust_volume: 0.333_f32,
-            engine_vibrations_volume: 0.333_f32,
             samples_per_second,
             engine,
             dc_lp,
@@ -270,32 +270,32 @@ impl Generator {
 
     #[inline]
     pub fn set_intake_volume(&mut self, intake_volume: f32) {
-        self.intake_volume = intake_volume;
+        self.engine.intake_volume = intake_volume;
     }
 
     #[inline]
     pub fn get_intake_volume(&self) -> f32 {
-        self.intake_volume
+        self.engine.intake_volume
     }
 
     #[inline]
     pub fn set_exhaust_volume(&mut self, exhaust_volume: f32) {
-        self.exhaust_volume = exhaust_volume;
+        self.engine.exhaust_volume = exhaust_volume;
     }
 
     #[inline]
     pub fn get_exhaust_volume(&self) -> f32 {
-        self.exhaust_volume
+        self.engine.exhaust_volume
     }
 
     #[inline]
     pub fn set_engine_vibrations_volume(&mut self, engine_vibrations_volume: f32) {
-        self.engine_vibrations_volume = engine_vibrations_volume;
+        self.engine.engine_vibrations_volume = engine_vibrations_volume;
     }
 
     #[inline]
     pub fn get_engine_vibrations_volume(&self) -> f32 {
-        self.engine_vibrations_volume
+        self.engine.engine_vibrations_volume
     }
 
     /// generates one sample worth of data
@@ -379,16 +379,19 @@ pub struct WaveGuide {
     pub alpha: f32,
     /// reflection factor for the second value of the return tuple of `pop`
     pub beta: f32,
+
     // running values
+    #[serde(skip)]
     c1_out: f32,
+    #[serde(skip)]
     c0_out: f32,
 }
 
 impl WaveGuide {
-    pub fn new(delay: usize, alpha: f32, beta: f32) -> WaveGuide {
+    pub fn new(delay: usize, alpha: f32, beta: f32, samples_per_second: u32) -> WaveGuide {
         WaveGuide {
-            chamber0: DelayLine::new(delay),
-            chamber1: DelayLine::new(delay),
+            chamber0: DelayLine::new(delay, samples_per_second),
+            chamber1: DelayLine::new(delay, samples_per_second),
             alpha,
             beta,
             c1_out: 0.0,
@@ -424,9 +427,9 @@ impl WaveGuide {
         self.chamber1.samples.advance();
     }
 
-    pub fn update(&mut self, delay: usize, alpha: f32, beta: f32) -> Option<Self> {
+    pub fn update(&mut self, delay: usize, alpha: f32, beta: f32, samples_per_second: u32) -> Option<Self> {
         if delay != self.chamber0.samples.len || alpha != self.alpha || beta != self.beta {
-            Some(Self::new(delay, alpha, beta))
+            Some(Self::new(delay, alpha, beta, samples_per_second))
         } else {
             None
         }
@@ -434,19 +437,22 @@ impl WaveGuide {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct LoopBuffer<T> {
+#[serde(from = "crate::deser::LoopBufferDeser")]
+pub struct LoopBuffer {
+    // in seconds
+    pub delay: f32,
+    #[serde(skip)]
     pub len: usize,
-    #[serde(skip_serializing, skip_deserializing)]
-    pub(in crate::gen) data: Vec<T>,
-    pos: usize,
+    #[serde(skip)]
+    pub data: Vec<f32>,
+    #[serde(skip)]
+    pub pos: usize,
 }
 
-impl<T> LoopBuffer<T>
-where T: Clone
-{
+impl LoopBuffer {
     /// Creates a new loop buffer with specifies length.
     /// The internal sample buffer size is rounded up to the currently best SIMD implementation's float vector size.
-    pub fn new(initial_value: T, len: usize) -> LoopBuffer<T> {
+    pub fn new(len: usize, samples_per_second: u32) -> LoopBuffer {
         simd_runtime_generate!(
             fn get_best_simd_size(size: usize) -> usize {
                 ((size - 1) / S::VF32_WIDTH + 1) * S::VF32_WIDTH
@@ -454,8 +460,9 @@ where T: Clone
         );
         let bufsize = get_best_simd_size_runtime_select(len);
         LoopBuffer {
+            delay: len as f32 / samples_per_second as f32,
             len,
-            data: std::iter::repeat(initial_value).take(bufsize).collect(),
+            data: vec![0.0; bufsize],
             pos: 0,
         }
     }
@@ -470,14 +477,14 @@ where T: Clone
     /// assert_eq(lb.pop(), 1.0);
     ///
     /// ```
-    pub fn push(&mut self, value: T) {
+    pub fn push(&mut self, value: f32) {
         let len = self.len;
         self.data[self.pos % len] = value;
     }
 
     /// Gets the value `self.len` samples prior. Must be called with `push`.
     /// See `push` for examples
-    pub fn pop(&mut self) -> T {
+    pub fn pop(&mut self) -> f32 {
         let len = self.len;
         self.data[(self.pos + 1) % len].clone()
     }
@@ -490,20 +497,18 @@ where T: Clone
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct LowPassFilter {
-    pub samples:            LoopBuffer<f32>,
-    pub samples_per_second: u32,
+    pub samples: LoopBuffer,
 }
 
 impl LowPassFilter {
     pub fn new(freq: f32, samples_per_second: u32) -> LowPassFilter {
         LowPassFilter {
-            samples: LoopBuffer::new(0.0f32, ((samples_per_second as f32 / freq) as u32).min(samples_per_second).max(1) as usize),
-            samples_per_second,
+            samples: LoopBuffer::new(((samples_per_second as f32 / freq) as u32).min(samples_per_second).max(1) as usize, samples_per_second)
         }
     }
 
-    pub fn get_freq(&self) -> f32 {
-        self.samples_per_second as f32 / self.samples.len as f32
+    pub fn get_freq(&self, samples_per_second: u32) -> f32 {
+        samples_per_second as f32 / self.samples.len as f32
     }
 
     pub fn filter(&mut self, sample: f32) -> f32 {
@@ -530,11 +535,11 @@ impl LowPassFilter {
         sum_runtime_select(&self.samples.data)
     }
 
-    pub fn update(&mut self, freq: f32) -> Option<Self> {
-        let newfreq_samples = ((self.samples_per_second as f32 / freq) as u32).min(self.samples_per_second).max(1) as usize;
+    pub fn update(&mut self, freq: f32, samples_per_second: u32) -> Option<Self> {
+        let newfreq_samples = ((samples_per_second as f32 / freq) as u32).min(samples_per_second).max(1) as usize;
 
         if newfreq_samples != self.samples.len {
-            Some(Self::new(freq, self.samples_per_second))
+            Some(Self::new(freq, samples_per_second))
         } else {
             None
         }
@@ -543,13 +548,13 @@ impl LowPassFilter {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct DelayLine {
-    pub samples: LoopBuffer<f32>,
+    pub samples: LoopBuffer,
 }
 
 impl DelayLine {
-    pub fn new(delay: usize) -> DelayLine {
+    pub fn new(delay: usize, samples_per_second: u32) -> DelayLine {
         DelayLine {
-            samples: LoopBuffer::new(0.0f32, delay)
+            samples: LoopBuffer::new(delay, samples_per_second)
         }
     }
 

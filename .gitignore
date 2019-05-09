@@ -8,5 +8,6 @@ enginesound.iml
 out.wav
 SDL2.dll
 /win_sdl_libs
-*.wav
-*.zip
+**/*.wav
+**/*.zip
+**/*.es

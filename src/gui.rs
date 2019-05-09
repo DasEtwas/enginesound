@@ -1,9 +1,16 @@
-use crate::{distance_to_samples, gen::Generator, recorder::Recorder, samples_to_distance, MAX_CYLINDERS, MUFFLER_ELEMENT_COUNT, SAMPLE_RATE, SPEED_OF_SOUND};
+use crate::{distance_to_samples,
+            gen::{Engine, Generator},
+            recorder::Recorder,
+            samples_to_distance,
+            MAX_CYLINDERS,
+            MUFFLER_ELEMENT_COUNT,
+            SAMPLE_RATE,
+            SPEED_OF_SOUND};
 use chrono::{Datelike, Local, Timelike};
 use conrod_core::{position::{Align, Direction, Padding, Relative},
                   *};
 use parking_lot::RwLock;
-use std::sync::Arc;
+use std::{fs::File, io::Write, path::PathBuf, sync::Arc};
 
 /// A set of reasonable stylistic defaults that works for the `gui` below.
 pub fn theme() -> conrod_core::Theme {
@@ -18,8 +25,8 @@ pub fn theme() -> conrod_core::Theme {
         border_width:           0.0,
         label_color:            conrod_core::color::rgb(0.78, 0.78, 0.80),
         font_id:                None,
-        font_size_large:        26,
-        font_size_medium:       18,
+        font_size_large:        20,
+        font_size_medium:       14,
         font_size_small:        12,
         widget_styling:         conrod_core::theme::StyleMap::default(),
         mouse_drag_threshold:   0.0,
@@ -34,6 +41,9 @@ pub struct Ids {
     pub duty_display:                           widget::Id,
     pub record_button:                          widget::Id,
     pub reset_button:                           widget::Id,
+    pub save_button:                            widget::Id,
+    pub load_button:                            widget::Id,
+    pub load_path:                              widget::Id,
     pub engine_rpm_slider:                      widget::Id,
     pub engine_master_volume_slider:            widget::Id,
     pub engine_intake_volume_slider:            widget::Id,
@@ -78,11 +88,15 @@ impl Ids {
     #[allow(unused_mut, unused_variables)]
     pub fn new(mut generator: widget::id::Generator) -> Self {
         Ids {
-            canvas:                                 generator.next(),
-            title:                                  generator.next(),
-            duty_display:                           generator.next(),
-            record_button:                          generator.next(),
-            reset_button:                           generator.next(),
+            canvas:        generator.next(),
+            title:         generator.next(),
+            duty_display:  generator.next(),
+            record_button: generator.next(),
+            reset_button:  generator.next(),
+            save_button:   generator.next(),
+            load_button:   generator.next(),
+            load_path:     generator.next(),
+
             engine_rpm_slider:                      generator.next(),
             engine_master_volume_slider:            generator.next(),
             engine_intake_volume_slider:            generator.next(),
@@ -124,11 +138,25 @@ impl Ids {
     }
 }
 
+pub struct MenuState {
+    config_load_directory: String,
+}
+
+impl MenuState {
+    pub fn new() -> MenuState {
+        MenuState {
+            config_load_directory: String::from("")
+        }
+    }
+}
+
 /// Instantiate a GUI demonstrating every widget available in conrod.
-pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Generator>>) {
+pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Generator>>, menu_state: &mut MenuState) {
     const PAD_TOP: conrod_core::Scalar = 10.0;
     const PAD: conrod_core::Scalar = 30.0;
     const BUTTONWIDTH: conrod_core::Scalar = 700.0;
+    const DOWN_SPACE: conrod_core::Scalar = 6.0;
+    const LINE_SIZE: conrod_core::Scalar = 14.0;
 
     widget::Canvas::new().pad(PAD).pad_right(PAD + 20.0).pad_top(0.0).scroll_kids_vertically().set(ids.canvas, ui);
     widget::Scrollbar::y_axis(ids.canvas).auto_hide(true).w(25.0).set(ids.canvas_scrollbar, ui);
@@ -136,13 +164,16 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
     widget::Text::new("Engine Sound Generator")
         .font_size(24)
         .top_left_with_margins(PAD_TOP, PAD)
-        .w(ui.win_w - PAD * 2.0)
+        .w_h(ui.win_w - PAD * 2.0, LINE_SIZE)
         .mid_left_of(ids.canvas)
         .set(ids.title, ui);
 
     {
         let mut generator = generator.write();
-        widget::Text::new(format!("Current sampler duty: {:.2}%", generator.sampler_duty * 100.0).as_str()).down(7.0).w(700.0).set(ids.duty_display, ui);
+        widget::Text::new(format!("Current sampler duty: {:.2}%", generator.sampler_duty * 100.0).as_str())
+            .down(DOWN_SPACE + 8.0)
+            .w(700.0)
+            .set(ids.duty_display, ui);
 
         {
             let (mut button_label, remove_recorder) = match &mut generator.recorder {
@@ -165,7 +196,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 generator.recorder = None;
             }
 
-            for _press in widget::Button::new().left_justify_label().label(button_label.as_str()).down(7.0).w(BUTTONWIDTH).set(ids.record_button, ui) {
+            for _press in widget::Button::new().left_justify_label().label(button_label.as_str()).down(DOWN_SPACE).w(BUTTONWIDTH).set(ids.record_button, ui) {
                 match &mut generator.recorder {
                     None => {
                         generator.recorder = Some(Recorder::new(recording_name()));
@@ -188,7 +219,61 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 generator.reset();
             }
         }
+        // load / save
+        {
+            for _press in widget::Button::new().left_justify_label().label("Save").down(DOWN_SPACE).w(BUTTONWIDTH).set(ids.save_button, ui) {
+                let pretty = ron::ser::PrettyConfig {
+                    depth_limit: 6,
+                    separate_tuple_members: true,
+                    enumerate_arrays: true,
+                    ..ron::ser::PrettyConfig::default()
+                };
 
+                match ron::ser::to_string_pretty(&generator.engine, pretty) {
+                    Ok(s) => {
+                        let name = config_name();
+                        match File::create(&name) {
+                            Ok(mut file) => {
+                                file.write(s.as_bytes()).unwrap();
+
+                                println!("Successfully saved engine config \"{}\"", &name);
+                            },
+                            Err(e) => eprintln!("Failed to create file for saving engine config: {}", e),
+                        }
+                    },
+                    Err(e) => eprintln!("Failed to save engine config: {}", e),
+                }
+            }
+
+            for event in widget::FileNavigator::with_extension(PathBuf::from(".").as_path(), &["es"])
+                .show_hidden_files(true)
+                .down(DOWN_SPACE)
+                .w_h(BUTTONWIDTH, 140.0)
+                .set(ids.load_path, ui)
+            {
+                match event {
+                    widget::file_navigator::Event::ChangeSelection(paths) => {
+                        menu_state.config_load_directory = paths.get(0).unwrap_or(&PathBuf::from("")).to_str().unwrap_or("").to_owned()
+                    },
+                    _ => (),
+                }
+            }
+
+            for _press in widget::Button::new().left_justify_label().label("Load").down(DOWN_SPACE).w_h(BUTTONWIDTH, LINE_SIZE).set(ids.load_button, ui) {
+                match File::open(&menu_state.config_load_directory) {
+                    Ok(file) => {
+                        match ron::de::from_reader::<_, Engine>(file) {
+                            Ok(engine) => {
+                                generator.engine = engine;
+                                println!("Successfully loaded engine config \"{}\"", &menu_state.config_load_directory);
+                            },
+                            Err(e) => eprintln!("Failed to load config \"{}\": {}", &menu_state.config_load_directory, e),
+                        }
+                    },
+                    Err(e) => eprintln!("Failed to load file \"{}\": {}", &menu_state.config_load_directory, e),
+                }
+            }
+        }
         {
             let prev_val = generator.get_rpm();
             for value in widget::Slider::new(prev_val, 300.0, 13000.0)
@@ -313,7 +398,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 generator.set_engine_vibrations_volume(evv / sum);
             }
         }
-        widget::Text::new("Engine parameters").font_size(16).down(7.0).w(ui.window_dim()[0] - PAD * 2.0).set(ids.engine_title, ui);
+        widget::Text::new("Engine parameters").font_size(16).down(DOWN_SPACE).w(ui.window_dim()[0] - PAD * 2.0).set(ids.engine_title, ui);
         {
             // intake_noise_factor
             {
@@ -324,7 +409,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                     .label(format!("intake_noise_factor {:.2}", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
-                    .down(7.0)
+                    .down(DOWN_SPACE)
                     .set(ids.engine_intake_noise_factor, ui)
                 {
                     generator.engine.intake_noise_factor = value;
@@ -334,16 +419,16 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
             {
                 const MIN: f32 = 10.0;
                 const MAX: f32 = SAMPLE_RATE as f32;
-                let prev_val = generator.engine.intake_noise_lp.get_freq();
+                let prev_val = generator.engine.intake_noise_lp.get_freq(SAMPLE_RATE);
                 for value in widget::Slider::new(prev_val, MIN, MAX)
                     .label(format!("Intake noise Lowpass-Filter Frequency {:.2}hz", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
-                    .down(7.0)
+                    .down(DOWN_SPACE)
                     .skew(10.0)
                     .set(ids.engine_intake_lp_filter_freq, ui)
                 {
-                    let new = generator.engine.intake_noise_lp.update(value);
+                    let new = generator.engine.intake_noise_lp.update(value, SAMPLE_RATE);
 
                     match new {
                         Some(new) => generator.engine.intake_noise_lp = new,
@@ -402,16 +487,16 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
             {
                 const MIN: f32 = 10.0;
                 const MAX: f32 = SAMPLE_RATE as f32;
-                let prev_val = generator.engine.crankshaft_fluctuation_lp.get_freq();
+                let prev_val = generator.engine.crankshaft_fluctuation_lp.get_freq(SAMPLE_RATE);
                 for value in widget::Slider::new(prev_val, MIN, MAX)
                     .label(format!("Crankshaft fluctuation noise Lowpass-Filter frequency {:.2}hz", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
-                    .down(7.0)
+                    .down(DOWN_SPACE)
                     .skew(10.0)
                     .set(ids.engine_crankshaft_fluctuation_lp_freq, ui)
                 {
-                    let new = generator.engine.crankshaft_fluctuation_lp.update(value);
+                    let new = generator.engine.crankshaft_fluctuation_lp.update(value, SAMPLE_RATE);
 
                     match new {
                         Some(new) => generator.engine.crankshaft_fluctuation_lp = new,
@@ -422,7 +507,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
         }
 
         {
-            widget::Text::new("Muffler parameters").font_size(16).down(7.0).w(ui.window_dim()[0] - PAD * 2.0).set(ids.muffler_title, ui);
+            widget::Text::new("Muffler parameters").font_size(16).down(DOWN_SPACE).w(ui.window_dim()[0] - PAD * 2.0).set(ids.muffler_title, ui);
 
             // engine_muffler_straight_pipe_alpha
             {
@@ -433,7 +518,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                     .label(format!("Straight Pipe extractor-side reflectivity {:.2}", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
-                    .down(7.0)
+                    .down(DOWN_SPACE)
                     .set(ids.muffler_straight_pipe_alpha, ui)
                 {
                     generator.engine.muffler.straight_pipe.alpha = value;
@@ -448,7 +533,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                     .label(format!("Straight Pipe muffler-side reflectivity {:.2}", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
-                    .down(7.0)
+                    .down(DOWN_SPACE)
                     .set(ids.muffler_straight_pipe_beta, ui)
                 {
                     generator.engine.muffler.straight_pipe.beta = value;
@@ -464,12 +549,14 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                     .label(format!("Straight Pipe length {:.2}m ({:.1}hz sine peak)", prev_val, SPEED_OF_SOUND / prev_val * 2.0).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
-                    .down(7.0)
+                    .down(DOWN_SPACE)
                     .set(ids.muffler_straight_pipe_length, ui)
                 {
                     let alpha = generator.engine.muffler.straight_pipe.alpha;
                     let beta = generator.engine.muffler.straight_pipe.beta;
-                    if let Some(newgen) = generator.engine.muffler.straight_pipe.update((value / SPEED_OF_SOUND * SAMPLE_RATE as f32) as usize, alpha, beta) {
+                    if let Some(newgen) =
+                        generator.engine.muffler.straight_pipe.update((value / SPEED_OF_SOUND * SAMPLE_RATE as f32) as usize, alpha, beta, SAMPLE_RATE)
+                    {
                         generator.engine.muffler.straight_pipe = newgen;
                     }
                 }
@@ -507,7 +594,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                         .down(5.0)
                         .set(ids.muffler_element_length[i], ui)
                     {
-                        let new = muffler_element.update(distance_to_samples(value), muffler_element.alpha, muffler_element.beta);
+                        let new = muffler_element.update(distance_to_samples(value), muffler_element.alpha, muffler_element.beta, SAMPLE_RATE);
 
                         match new {
                             Some(new) => {
@@ -521,7 +608,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
             }
         }
 
-        widget::Text::new("Cylinder parameters").font_size(16).down(7.0).w(ui.window_dim()[0] - PAD * 2.0).set(ids.cylinder_title, ui);
+        widget::Text::new("Cylinder parameters").font_size(16).down(DOWN_SPACE).w(ui.window_dim()[0] - PAD * 2.0).set(ids.cylinder_title, ui);
 
         {
             // if a ui element is being changed, the cylinders need to be replaced
@@ -733,15 +820,52 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 }
             }
 
-            // let cylinders = generator.engine.cylinders.clone();
-
             if changed {
-                generator.engine.cylinders.clear();
-                for i in 0..num_cylinders {
-                    let mut cyl = cylinder.clone();
-                    cyl.crank_offset = i as f32 / num_cylinders as f32 * (1.0 - growl);
-                    generator.engine.cylinders.push(cyl);
-                }
+                // copy all previous waveguides but modify the values that all cylinders have in common
+
+                generator.engine.cylinders = if num_cylinders <= generator.engine.cylinders.len() {
+                    let mut new_cylinders = generator.engine.cylinders[0..num_cylinders].to_vec();
+
+                    for (i, mut cyl) in new_cylinders.iter_mut().enumerate() {
+                        // copy all the values that cna be changed by the above sliders, but do not copy the waveguides as to not override their lengths
+
+                        cyl.crank_offset = i as f32 / num_cylinders as f32 * (1.0 - growl);
+                        cyl.intake_open_refl = cylinder.intake_open_refl;
+                        cyl.intake_closed_refl = cylinder.intake_closed_refl;
+                        cyl.exhaust_open_refl = cylinder.exhaust_open_refl;
+                        cyl.exhaust_closed_refl = cylinder.exhaust_closed_refl;
+                        cyl.piston_motion_factor = cylinder.piston_motion_factor;
+                        cyl.ignition_factor = cylinder.ignition_factor;
+                        cyl.ignition_time = cylinder.ignition_time;
+                        cyl.pressure_release_factor = cylinder.pressure_release_factor;
+                    }
+
+                    new_cylinders
+                } else {
+                    let mut new_cylinders = generator.engine.cylinders.to_vec();
+
+                    for (i, mut cyl) in new_cylinders.iter_mut().enumerate() {
+                        // copy all the values that cna be changed by the above sliders, but do not copy the waveguides as to not override their lengths
+
+                        cyl.crank_offset = i as f32 / num_cylinders as f32 * (1.0 - growl);
+                        cyl.intake_open_refl = cylinder.intake_open_refl;
+                        cyl.intake_closed_refl = cylinder.intake_closed_refl;
+                        cyl.exhaust_open_refl = cylinder.exhaust_open_refl;
+                        cyl.exhaust_closed_refl = cylinder.exhaust_closed_refl;
+                        cyl.piston_motion_factor = cylinder.piston_motion_factor;
+                        cyl.ignition_factor = cylinder.ignition_factor;
+                        cyl.ignition_time = cylinder.ignition_time;
+                        cyl.pressure_release_factor = cylinder.pressure_release_factor;
+                    }
+
+                    // set the last cylinder's crank offset correctly
+
+                    cylinder.crank_offset = (num_cylinders - 1) as f32 / num_cylinders as f32 * (1.0 - growl);
+
+                    new_cylinders.push(cylinder);
+
+                    new_cylinders
+                };
             }
 
             for (i, mut cyl) in generator.engine.cylinders.iter_mut().enumerate() {
@@ -763,7 +887,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                         .down(5.0)
                         .set(ids.cylinder_intake_pipe_length[i], ui)
                     {
-                        let new = cyl.intake_waveguide.update(distance_to_samples(value), cyl.intake_waveguide.alpha, cyl.intake_waveguide.beta);
+                        let new = cyl.intake_waveguide.update(distance_to_samples(value), cyl.intake_waveguide.alpha, cyl.intake_waveguide.beta, SAMPLE_RATE);
 
                         match new {
                             Some(new) => cyl.intake_waveguide = new,
@@ -783,7 +907,8 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                         .down(5.0)
                         .set(ids.cylinder_exhaust_pipe_length[i], ui)
                     {
-                        let new = cyl.exhaust_waveguide.update(distance_to_samples(value), cyl.exhaust_waveguide.alpha, cyl.exhaust_waveguide.beta);
+                        let new =
+                            cyl.exhaust_waveguide.update(distance_to_samples(value), cyl.exhaust_waveguide.alpha, cyl.exhaust_waveguide.beta, SAMPLE_RATE);
 
                         match new {
                             Some(new) => cyl.exhaust_waveguide = new,
@@ -803,7 +928,12 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                         .down(5.0)
                         .set(ids.cylinder_extractor_pipe_length[i], ui)
                     {
-                        let new = cyl.extractor_waveguide.update(distance_to_samples(value), cyl.extractor_waveguide.alpha, cyl.extractor_waveguide.beta);
+                        let new = cyl.extractor_waveguide.update(
+                            distance_to_samples(value),
+                            cyl.extractor_waveguide.alpha,
+                            cyl.extractor_waveguide.beta,
+                            SAMPLE_RATE,
+                        );
 
                         match new {
                             Some(new) => cyl.extractor_waveguide = new,
@@ -843,4 +973,10 @@ fn recording_name() -> String {
     let time = Local::now();
 
     format!("enginesound_{:02}{:02}{:04}-{:02}{:02}{:02}.wav", time.day(), time.month(), time.year(), time.hour(), time.minute(), time.second())
+}
+
+fn config_name() -> String {
+    let time = Local::now();
+
+    format!("enginesound_{:02}{:02}{:04}-{:02}{:02}{:02}.es", time.day(), time.month(), time.year(), time.hour(), time.minute(), time.second())
 }

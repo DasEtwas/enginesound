@@ -1,7 +1,7 @@
 [package]
 name = "enginesound"
 version = "0.1.0"
-authors = ["dasetwas", "Friz64"]
+authors = ["dasetwas"]
 edition = "2018"
 
 [dependencies]
@@ -12,6 +12,7 @@ chrono = "0.4.6"
 
 # saving presets #
 serde = { version = "1.0.90", features = ["derive"] }
+ron = "0.5.1"
 
 # misc #
 parking_lot = "0.7.1"

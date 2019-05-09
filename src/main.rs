@@ -4,10 +4,12 @@ use crate::gen::{Cylinder, Engine, LowPassFilter, Muffler, Noise, WaveGuide};
 use parking_lot::RwLock;
 
 mod audio;
+mod deser;
 mod gen;
 mod gui;
 mod recorder;
 
+use crate::gui::MenuState;
 use conrod_core::text::Font;
 use glium::Surface;
 use std::sync::Arc;
@@ -32,10 +34,10 @@ fn main() {
         cylinders.push(Cylinder {
             crank_offset: i as f32 / num_cylinders as f32,
             // alpha is set while running, exhaust_openside_refl: 0.1
-            exhaust_waveguide: WaveGuide::new(distance_to_samples(0.8), -1000.0, 0.06),
+            exhaust_waveguide: WaveGuide::new(distance_to_samples(0.8), -1000.0, 0.06, SAMPLE_RATE),
             // alpha is set while running, beta is intake_openside_refl:  -0.5
-            intake_waveguide:    WaveGuide::new(distance_to_samples(0.8), -1000.0, -0.5),
-            extractor_waveguide: WaveGuide::new(distance_to_samples(0.8), 0.0, 0.7),
+            intake_waveguide:    WaveGuide::new(distance_to_samples(0.8), -1000.0, -0.5, SAMPLE_RATE),
+            extractor_waveguide: WaveGuide::new(distance_to_samples(0.8), 0.0, 0.7, SAMPLE_RATE),
 
             intake_open_refl:    0.0,
             intake_closed_refl:  1.0,
@@ -56,6 +58,9 @@ fn main() {
 
     let engine: Engine = Engine {
         rpm: 700.0_f32,
+        intake_volume: 1.0 / 3.0,
+        exhaust_volume: 1.0 / 3.0,
+        engine_vibrations_volume: 1.0 / 3.0,
 
         cylinders,
         intake_noise: Noise::default(),
@@ -64,9 +69,9 @@ fn main() {
         engine_vibration_filter: LowPassFilter::new(300.0, SAMPLE_RATE),
         muffler: Muffler {
             muffler_elements: (0..MUFFLER_ELEMENT_COUNT)
-                .map(|i| WaveGuide::new(distance_to_samples(0.05 * i as f32 * f32::powf(0.87, i as f32)), 0.0, -0.5))
+                .map(|i| WaveGuide::new(distance_to_samples(0.05 * i as f32 * f32::powf(0.87, i as f32)), 0.0, -0.5, SAMPLE_RATE))
                 .collect(),
-            straight_pipe:    WaveGuide::new(distance_to_samples(0.5), 0.08, 0.25),
+            straight_pipe:    WaveGuide::new(distance_to_samples(0.5), 0.08, 0.25, SAMPLE_RATE),
         },
 
         intake_valve_shift: 0.0,
@@ -90,12 +95,14 @@ fn main() {
 
     // GUI
     {
+        let mut menu_state = MenuState::new();
+
         // Build the window.
         let mut events_loop = glium::glutin::EventsLoop::new();
         let window = glium::glutin::WindowBuilder::new()
             .with_title("Engine Sound Generator")
             .with_dimensions((WINDOW_WIDTH, WINDOW_HEIGHT).into())
-            .with_max_dimensions((WINDOW_WIDTH + 1.0, WINDOW_HEIGHT + 1.0).into())
+            .with_max_dimensions((WINDOW_WIDTH + 1.0, WINDOW_HEIGHT + 1000.0).into())
             .with_min_dimensions((WINDOW_WIDTH, WINDOW_HEIGHT).into())
             .with_resizable(true);
         let context = glium::glutin::ContextBuilder::new().with_vsync(true).with_multisampling(4);
@@ -140,7 +147,7 @@ fn main() {
                 }
             }
 
-            gui::gui(&mut ui.set_widgets(), &ids, generator.clone());
+            gui::gui(&mut ui.set_widgets(), &ids, generator.clone(), &mut menu_state);
 
             if let Some(primitives) = ui.draw_if_changed() {
                 renderer.fill(&display.0, primitives, &image_map);
