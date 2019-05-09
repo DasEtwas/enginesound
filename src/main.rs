@@ -1,4 +1,4 @@
-use crate::gen::{Cylinder, Engine, LowPassFilter, Muffler, Noise, WaveGuide};
+use crate::gen::LowPassFilter;
 use parking_lot::RwLock;
 
 mod audio;
@@ -8,8 +8,11 @@ mod gui;
 mod recorder;
 
 use crate::gui::MenuState;
+use clap::{App, Arg};
 use conrod_core::text::Font;
 use glium::Surface;
+use std::fs::File;
+use std::io::Read;
 use std::sync::Arc;
 
 mod support;
@@ -24,63 +27,42 @@ const DC_OFFSET_LP_FREQ: f32 = 4.0; // the frequency of the low pass filter whic
 const MAX_CYLINDERS: usize = 16;
 const MUFFLER_ELEMENT_COUNT: usize = 4;
 
+const DEFAULT_CONFIG: &[u8] = include_bytes!("default.es");
+
 fn main() {
-    let num_cylinders = 3;
-    let mut cylinders = Vec::with_capacity(num_cylinders);
+    let clap = App::new("Engine Sound Generator")
+        .version(clap::crate_version!())
+        .author(clap::crate_authors!())
+        .about(clap::crate_description!())
+        .arg(Arg::with_name("headless").short("h").long("headless").help("CLI mode without GUI or audio playback").requires("config"))
+        .arg(Arg::with_name("config").short("c").long("config").help("Sets the input file to load as an engine config").takes_value(true))
+        .arg(Arg::with_name("warmup_time").short("w").long("warmup_time").help("Sets the time to wait in seconds before recording").takes_value(true).default_value("3.0"))
+        .arg(Arg::with_name("reclen").short("l").long("length").help("Sets the time to record in seconds").takes_value(true).default_value("5.0"))
+        .arg(Arg::with_name("output_file").short("o").long("output").help("Sets the output .wav file path").takes_value(true).default_value("output.wav"))
+        .arg(Arg::with_name("crossfade").short("f").long("crossfade").help("Crossfades the recording in the middle end-to-start to create a seamless loop, although adjusting the recording's length to the rpm is recommended"))
+        .get_matches();
 
-    for i in 0..num_cylinders {
-        cylinders.push(Cylinder {
-            crank_offset: i as f32 / num_cylinders as f32,
-            // alpha is set while running, exhaust_openside_refl: 0.1
-            exhaust_waveguide: WaveGuide::new(distance_to_samples(0.8), -1000.0, 0.06, SAMPLE_RATE),
-            // alpha is set while running, beta is intake_openside_refl:  -0.5
-            intake_waveguide:    WaveGuide::new(distance_to_samples(0.8), -1000.0, -0.5, SAMPLE_RATE),
-            extractor_waveguide: WaveGuide::new(distance_to_samples(0.8), 0.0, 0.7, SAMPLE_RATE),
-
-            intake_open_refl:    0.0,
-            intake_closed_refl:  1.0,
-            exhaust_open_refl:   0.0,
-            exhaust_closed_refl: 1.0,
-
-            piston_motion_factor:    1.8,
-            ignition_factor:         2.6,
-            ignition_time:           0.2,
-            pressure_release_factor: (1.0 - 0.04f32).powf(1.0 / SAMPLE_RATE as f32),
-
-            // running values
-            cyl_sound:         0.0,
-            cyl_pressure:      0.0,
-            extractor_exhaust: 0.0,
-        });
-    }
-
-    let engine: Engine = Engine {
-        rpm: 700.0_f32,
-        intake_volume: 1.0 / 3.0,
-        exhaust_volume: 1.0 / 3.0,
-        engine_vibrations_volume: 1.0 / 3.0,
-
-        cylinders,
-        intake_noise: Noise::default(),
-        intake_noise_factor: 0.6,
-        intake_noise_lp: LowPassFilter::new(2000.0, SAMPLE_RATE),
-        engine_vibration_filter: LowPassFilter::new(300.0, SAMPLE_RATE),
-        muffler: Muffler {
-            muffler_elements: (0..MUFFLER_ELEMENT_COUNT)
-                .map(|i| WaveGuide::new(distance_to_samples(0.05 * i as f32 * f32::powf(0.87, i as f32)), 0.0, -0.5, SAMPLE_RATE))
-                .collect(),
-            straight_pipe:    WaveGuide::new(distance_to_samples(0.5), 0.08, 0.25, SAMPLE_RATE),
-        },
-
-        intake_valve_shift: 0.0,
-        exhaust_valve_shift: 0.0,
-        crankshaft_fluctuation: 0.03,
-        crankshaft_fluctuation_lp: LowPassFilter::new(350.0, SAMPLE_RATE),
-        // running values
-        /// crankshaft position, 0.0-1.0
-        crankshaft_pos: 0.0,
-        exhaust_collector: 0.0,
-        intake_collector: 0.0,
+    let mut bytes;
+    let engine = match ron::de::from_bytes({
+        bytes = match clap.value_of("config") {
+            Some(path) => match File::open(path) {
+                Ok(mut file) => {
+                    let mut bytes = Vec::new();
+                    file.read_to_end(&mut bytes).unwrap();
+                    println!("Loaded config file \"{}\"", path);
+                    bytes
+                }
+                Err(e) => panic!("Failed to open config file \"{}\": {}", path, e),
+            },
+            None => DEFAULT_CONFIG.to_vec(),
+        };
+        &bytes
+    }) {
+        Ok(engine) => {
+            println!("Successfully loaded config");
+            engine
+        }
+        Err(e) => panic!("Failed to parse config: {}", e),
     };
 
     // sound generator
@@ -125,22 +107,17 @@ fn main() {
                 }
 
                 match event {
-                    glium::glutin::Event::WindowEvent {
-                        event, ..
-                    } => {
+                    glium::glutin::Event::WindowEvent { event, .. } => {
                         match event {
                             // Break from the loop upon `Escape`.
                             glium::glutin::WindowEvent::CloseRequested
                             | glium::glutin::WindowEvent::KeyboardInput {
-                                input:
-                                    glium::glutin::KeyboardInput {
-                                        virtual_keycode: Some(glium::glutin::VirtualKeyCode::Escape), ..
-                                    },
+                                input: glium::glutin::KeyboardInput { virtual_keycode: Some(glium::glutin::VirtualKeyCode::Escape), .. },
                                 ..
                             } => break 'main,
                             _ => (),
                         }
-                    },
+                    }
                     _ => (),
                 }
             }

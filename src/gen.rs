@@ -16,8 +16,10 @@ use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use serde::{Deserialize, Serialize};
 use simdeez::{avx2::*, scalar::*, sse2::*, sse41::*, *};
-use std::{ops::{Deref, DerefMut},
-          time::SystemTime};
+use std::{
+    ops::{Deref, DerefMut},
+    time::SystemTime,
+};
 
 pub const PI2F: f32 = 2.0 * std::f32::consts::PI;
 pub const PI4F: f32 = 4.0 * std::f32::consts::PI;
@@ -27,15 +29,15 @@ pub const WAVEGUIDE_MAX_AMP: f32 = 20.0; // at this amplitude, a reciprocal damp
 
 #[derive(Serialize, Deserialize)]
 pub struct Muffler {
-    pub straight_pipe:    WaveGuide,
+    pub straight_pipe: WaveGuide,
     pub muffler_elements: Vec<WaveGuide>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct Engine {
-    pub rpm:                      f32,
-    pub intake_volume:            f32,
-    pub exhaust_volume:           f32,
+    pub rpm: f32,
+    pub intake_volume: f32,
+    pub exhaust_volume: f32,
     pub engine_vibrations_volume: f32,
 
     pub cylinders: Vec<Cylinder>,
@@ -114,23 +116,19 @@ pub struct Cylinder {
     /// waveguide from the other end of the exhaust WG to the exhaust collector
     pub extractor_waveguide: WaveGuide,
     // waveguide alpha values for when the valves are closed or opened
-    pub intake_open_refl:    f32,
-    pub intake_closed_refl:  f32,
-    pub exhaust_open_refl:   f32,
+    pub intake_open_refl: f32,
+    pub intake_closed_refl: f32,
+    pub exhaust_open_refl: f32,
     pub exhaust_closed_refl: f32,
 
     pub piston_motion_factor: f32,
     pub ignition_factor: f32,
     /// the time it takes for the fuel to ignite in crank cycles (0.0 - 1.0)
     pub ignition_time: f32,
-    /// time it takes for the pressure in the cylinder to release into exhaust/intake
-    pub pressure_release_factor: f32,
 
     // running values
     #[serde(skip)]
     pub cyl_sound: f32,
-    #[serde(skip)]
-    pub cyl_pressure: f32,
     #[serde(skip)]
     pub extractor_exhaust: f32,
 }
@@ -147,8 +145,8 @@ impl Cylinder {
         let ex_valve = exhaust_valve(crank + exhaust_valve_shift);
         let in_valve = intake_valve(crank + intake_valve_shift);
 
-        self.exhaust_waveguide.alpha = (1.0 - ex_valve) * self.exhaust_open_refl + ex_valve * self.exhaust_closed_refl;
-        self.intake_waveguide.alpha = (1.0 - in_valve) * self.intake_open_refl + in_valve * self.intake_closed_refl;
+        self.exhaust_waveguide.alpha = self.exhaust_closed_refl + (self.exhaust_open_refl - self.exhaust_closed_refl) * ex_valve;
+        self.intake_waveguide.alpha = self.intake_closed_refl + (self.intake_open_refl - self.intake_closed_refl) * in_valve;
 
         // the first return value in the tuple is the cylinder-side valve-modulated side of the waveguide (alpha side)
         let ex_wg_ret = self.exhaust_waveguide.pop();
@@ -158,19 +156,17 @@ impl Cylinder {
         self.extractor_exhaust = extractor_wg_ret.0;
         self.extractor_waveguide.push(ex_wg_ret.1, exhaust_collector);
 
-        self.cyl_pressure += self.cyl_sound + ex_wg_ret.0 + in_wg_ret.0;
+        //self.cyl_sound += ex_wg_ret.0 + in_wg_ret.0;
 
         (in_wg_ret.1, extractor_wg_ret.1, self.cyl_sound, ex_wg_ret.2 | in_wg_ret.2 | extractor_wg_ret.2)
     }
 
     /// called after pop
     pub(in crate::gen) fn push(&mut self, intake: f32) {
-        let ex_in = (1.0 - self.exhaust_waveguide.alpha.abs()) * self.cyl_pressure * 0.5 * self.pressure_release_factor;
+        let ex_in = (1.0 - self.exhaust_waveguide.alpha.abs()) * self.cyl_sound * 0.5;
         self.exhaust_waveguide.push(ex_in, self.extractor_exhaust);
-        let in_in = (1.0 - self.intake_waveguide.alpha.abs()) * self.cyl_pressure * 0.5 * self.pressure_release_factor;
+        let in_in = (1.0 - self.intake_waveguide.alpha.abs()) * self.cyl_sound * 0.5;
         self.intake_waveguide.push(in_in, intake);
-
-        self.cyl_pressure -= ex_in + in_in;
     }
 }
 
@@ -460,12 +456,7 @@ impl LoopBuffer {
     /// The internal sample buffer size is rounded up to the currently best SIMD implementation's float vector size.
     pub fn new(len: usize, samples_per_second: u32) -> LoopBuffer {
         let bufsize = LoopBuffer::get_best_simd_size(len);
-        LoopBuffer {
-            delay: len as f32 / samples_per_second as f32,
-            len,
-            data: vec![0.0; bufsize],
-            pos: 0,
-        }
+        LoopBuffer { delay: len as f32 / samples_per_second as f32, len, data: vec![0.0; bufsize], pos: 0 }
     }
 
     /// Returns `(size / SIMD_REGISTER_SIZE).ceil() * SIMD_REGISTER_SIZE`, where `SIMD` may be the best simd implementation at runtime.
@@ -517,9 +508,7 @@ pub struct LowPassFilter {
 
 impl LowPassFilter {
     pub fn new(freq: f32, samples_per_second: u32) -> LowPassFilter {
-        LowPassFilter {
-            samples: LoopBuffer::new(((samples_per_second as f32 / freq) as u32).min(samples_per_second).max(1) as usize, samples_per_second)
-        }
+        LowPassFilter { samples: LoopBuffer::new(((samples_per_second as f32 / freq) as u32).min(samples_per_second).max(1) as usize, samples_per_second) }
     }
 
     pub fn get_freq(&self, samples_per_second: u32) -> f32 {
@@ -530,6 +519,7 @@ impl LowPassFilter {
         self.samples.push(sample);
         self.samples.advance();
 
+        #[inline(always)]
         unsafe fn sum<S: Simd>(samples: &[f32]) -> f32 {
             let mut i = S::VF32_WIDTH;
             let len = samples.len();
@@ -546,15 +536,27 @@ impl LowPassFilter {
             S::horizontal_add_ps(sum) / len as f32
         }
 
-        // expanded 'simd_runtime_select' macro for feature independency (procedural_macro_hygiene)
+        // expanded 'simd_runtime_select' macro for feature independency (proc_macro_hygiene)
         if is_x86_feature_detected!("avx2") {
-            unsafe { sum::<Avx2>(&self.samples.data) }
+            #[target_feature(enable = "avx2")]
+            unsafe fn call(samples: &[f32]) -> f32 {
+                sum::<Avx2>(samples)
+            }
+            unsafe { call(&self.samples.data) }
         } else if is_x86_feature_detected!("sse4.1") {
-            unsafe { sum::<Sse41>(&self.samples.data) }
+            #[target_feature(enable = "sse4.1")]
+            unsafe fn call(samples: &[f32]) -> f32 {
+                sum::<Sse41>(samples)
+            }
+            unsafe { call(&self.samples.data) }
         } else if is_x86_feature_detected!("sse2") {
-            unsafe { sum::<Sse2>(&self.samples.data) }
+            #[target_feature(enable = "sse2")]
+            unsafe fn call(samples: &[f32]) -> f32 {
+                sum::<Sse2>(samples)
+            }
+            unsafe { call(&self.samples.data) }
         } else {
-            unsafe { sum::<Scalar>(&self.samples.data) }
+            unsafe { sum::<Avx2>(&self.samples.data) }
         }
     }
 
@@ -576,9 +578,7 @@ pub struct DelayLine {
 
 impl DelayLine {
     pub fn new(delay: usize, samples_per_second: u32) -> DelayLine {
-        DelayLine {
-            samples: LoopBuffer::new(delay, samples_per_second)
-        }
+        DelayLine { samples: LoopBuffer::new(delay, samples_per_second) }
     }
 
     pub fn pop(&mut self) -> f32 {

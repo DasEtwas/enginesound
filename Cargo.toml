@@ -1,8 +1,11 @@
 [package]
 name = "enginesound"
-version = "0.1.0"
+version = "1.0.0"
 authors = ["dasetwas"]
 edition = "2018"
+description = """
+GUI Application used to generate purely synthetic engine sounds with advanced options in real-time, written in Rust
+"""
 
 [dependencies]
 # recording #
