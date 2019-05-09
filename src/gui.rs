@@ -27,7 +27,7 @@ pub fn theme() -> conrod_core::Theme {
         font_id:                None,
         font_size_large:        20,
         font_size_medium:       14,
-        font_size_small:        12,
+        font_size_small:        10,
         widget_styling:         conrod_core::theme::StyleMap::default(),
         mouse_drag_threshold:   0.0,
         double_click_threshold: std::time::Duration::from_millis(400),
@@ -51,6 +51,7 @@ pub struct Ids {
     pub engine_exhaust_volume_slider:           widget::Id,
     pub engine_engine_vibrations_volume_slider: widget::Id,
     pub engine_title:                           widget::Id,
+    pub engine_vibrations_lp_filter_freq:       widget::Id,
     pub engine_intake_noise_factor:             widget::Id,
     pub engine_intake_valve_shift:              widget::Id,
     pub engine_exhaust_valve_shift:             widget::Id,
@@ -104,6 +105,7 @@ impl Ids {
             engine_exhaust_volume_slider:           generator.next(),
             engine_engine_vibrations_volume_slider: generator.next(),
             engine_title:                           generator.next(),
+            engine_vibrations_lp_filter_freq:       generator.next(),
             engine_intake_noise_factor:             generator.next(),
             engine_intake_valve_shift:              generator.next(),
             engine_exhaust_valve_shift:             generator.next(),
@@ -156,7 +158,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
     const PAD: conrod_core::Scalar = 30.0;
     const BUTTONWIDTH: conrod_core::Scalar = 700.0;
     const DOWN_SPACE: conrod_core::Scalar = 6.0;
-    const LINE_SIZE: conrod_core::Scalar = 14.0;
+    const LINE_SIZE: conrod_core::Scalar = 12.0;
 
     widget::Canvas::new().pad(PAD).pad_right(PAD + 20.0).pad_top(0.0).scroll_kids_vertically().set(ids.canvas, ui);
     widget::Scrollbar::y_axis(ids.canvas).auto_hide(true).w(25.0).set(ids.canvas_scrollbar, ui);
@@ -245,7 +247,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 }
             }
 
-            for event in widget::FileNavigator::with_extension(PathBuf::from(".").as_path(), &["es"])
+            for event in widget::FileNavigator::with_extension(PathBuf::from("../").as_path(), &["es"])
                 .show_hidden_files(true)
                 .down(DOWN_SPACE)
                 .w_h(BUTTONWIDTH, 140.0)
@@ -398,8 +400,31 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 generator.set_engine_vibrations_volume(evv / sum);
             }
         }
+
         widget::Text::new("Engine parameters").font_size(16).down(DOWN_SPACE).w(ui.window_dim()[0] - PAD * 2.0).set(ids.engine_title, ui);
+
         {
+            // engine_vibrations_lowpassfilter_freq
+            {
+                const MIN: f32 = 10.0;
+                const MAX: f32 = SAMPLE_RATE as f32;
+                let prev_val = generator.engine.engine_vibration_filter.get_freq(SAMPLE_RATE);
+                for value in widget::Slider::new(prev_val, MIN, MAX)
+                    .label(format!("Engine vibrations Lowpass-Filter Frequency {:.2}hz", prev_val).as_str())
+                    .label_font_size(12)
+                    .padded_w_of(ids.canvas, PAD)
+                    .down(DOWN_SPACE)
+                    .skew(10.0)
+                    .set(ids.engine_vibrations_lp_filter_freq, ui)
+                {
+                    let new = generator.engine.engine_vibration_filter.update(value, SAMPLE_RATE);
+
+                    match new {
+                        Some(new) => generator.engine.engine_vibration_filter = new,
+                        None => (),
+                    }
+                }
+            }
             // intake_noise_factor
             {
                 const MIN: f32 = 0.0;
@@ -757,7 +782,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = 5.0;
                 let prev_val = cylinder.piston_motion_factor;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("Piston motion factor {:.2}", prev_val).as_str())
+                    .label(format!("Piston motion volume {:.2}", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(5.0)
@@ -773,7 +798,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = 5.0;
                 let prev_val = cylinder.ignition_factor;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("Ignition factor {:.2}", prev_val).as_str())
+                    .label(format!("Ignition volume {:.2}", prev_val).as_str())
                     .label_font_size(12)
                     .padded_w_of(ids.canvas, PAD)
                     .down(5.0)
