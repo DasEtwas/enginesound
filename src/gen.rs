@@ -558,7 +558,7 @@ impl LowPassFilter {
             }
             unsafe { call(&self.samples.data) }
         } else {
-            unsafe { sum::<Avx2>(&self.samples.data) }
+            unsafe { sum::<Scalar>(&self.samples.data) }
         }
     }
 
