@@ -31,7 +31,7 @@ impl Recorder {
             let running = self.running.clone();
             let block_lock = self.block_lock.clone();
             move || {
-                let _lock = block_lock.lock();
+                let lock = block_lock.lock();
 
                 let mut wav_writer = match hound::WavWriter::new(
                     File::create(filename.as_str()).unwrap_or_else(|e| panic!("Failed to create/open a file for writing the WAV: {}", e)),
@@ -59,6 +59,9 @@ impl Recorder {
                 wav_writer.flush().unwrap();
 
                 println!("Done writing WAV to File \"{}\" (wrote {:.3} sec)", filename, wav_writer.len() as f32 / crate::SAMPLE_RATE as f32);
+
+                // keeping lock in scope explicitly
+                std::mem::drop(lock);
             }
         });
     }
@@ -81,8 +84,11 @@ impl Recorder {
     pub fn stop(&self) {
         self.running.store(false, Ordering::Relaxed);
     }
+
     pub fn stop_wait(&self) {
         self.running.store(false, Ordering::Relaxed);
+
+        while self.sender.len() > 0 {}
 
         let _ = self.block_lock.lock();
     }

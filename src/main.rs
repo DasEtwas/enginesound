@@ -38,6 +38,7 @@ fn main() {
         .about(clap::crate_description!())
         .arg(Arg::with_name("headless").short("h").long("headless").help("CLI mode without GUI or audio playback").requires("config"))
         .arg(Arg::with_name("config").short("c").long("config").help("Sets the input file to load as an engine config").takes_value(true))
+        .arg(Arg::with_name("volume").short("v").long("volume").help("Sets the master volume").takes_value(true).default_value( "0.1"))
         .arg(Arg::with_name("rpm").short("r").long("rpm").help("Engine RPM").takes_value(true))
         .arg(Arg::with_name("warmup_time").short("w").long("warmup_time").help("Sets the time to wait in seconds before recording").default_value_if("headless", None, "3.0"))
         .arg(Arg::with_name("reclen").short("l").long("length").help("Sets the time to record in seconds").default_value_if("headless", None, "5.0"))
@@ -77,6 +78,8 @@ fn main() {
 
     // sound generator
     let mut generator = gen::Generator::new(SAMPLE_RATE, engine, LowPassFilter::new(DC_OFFSET_LP_FREQ, SAMPLE_RATE));
+
+    generator.volume = value_t!(matches.value_of("volume"), f32).unwrap();
 
     if cli_mode {
         let warmup_time = value_t!(matches.value_of("warmup_time"), f32).unwrap().max(0.0); // has default value
