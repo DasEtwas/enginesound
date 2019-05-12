@@ -7,8 +7,10 @@
 
 use crate::{recorder::Recorder, SAMPLES_PER_CALLBACK};
 
+#[allow(unused_imports)]
 #[cfg(target_arch = "x86")]
 use std::arch::x86::*;
+#[allow(unused_imports)]
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
