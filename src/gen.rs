@@ -521,15 +521,19 @@ impl LoopBuffer {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(from = "crate::deser::LowPassFilterDeser")]
 pub struct LowPassFilter {
-    pub samples: LoopBuffer,
+    pub delay: f32,
+    #[serde(skip)]
     pub len: f32,
+    #[serde(skip)]
+    pub samples: LoopBuffer,
 }
 
 impl LowPassFilter {
     pub fn new(freq: f32, samples_per_second: u32) -> LowPassFilter {
         let len = (samples_per_second as f32 / freq).min(samples_per_second as f32).max(1.0);
-        LowPassFilter { samples: LoopBuffer::new(len.ceil() as usize, samples_per_second), len }
+        LowPassFilter { samples: LoopBuffer::new(len.ceil() as usize, samples_per_second), delay: 1.0 / freq, len }
     }
 
     #[inline]
@@ -538,6 +542,10 @@ impl LowPassFilter {
     }
 
     pub fn filter(&mut self, sample: f32) -> f32 {
+        if self.len == f32::default() {
+            self.len = self.samples.len as f32;
+        }
+
         self.samples.push(sample);
         self.samples.advance();
 

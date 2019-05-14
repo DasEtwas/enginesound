@@ -1,8 +1,8 @@
 (
-    rpm: 1280.0376,
-    intake_volume: 0.57453525,
-    exhaust_volume: 0.26398277,
-    engine_vibrations_volume: 0.16148204,
+    rpm: 1276.3704,
+    intake_volume: 0.4328247,
+    exhaust_volume: 0.3689151,
+    engine_vibrations_volume: 0.19826025,
     cylinders: [
         (
             crank_offset: 0,
@@ -13,7 +13,7 @@
                 chamber1: (
                     samples: (delay:0.0009583333,),
                 ),
-                alpha: 0.8703525,
+                alpha: 1,
                 beta: 0.06,
             ),
             intake_waveguide: (
@@ -23,7 +23,7 @@
                 chamber1: (
                     samples: (delay:0.00014583333,),
                 ),
-                alpha: 1,
+                alpha: 0.021715522,
                 beta: -0.49987197,
             ),
             extractor_waveguide: (
@@ -53,7 +53,7 @@
                 chamber1: (
                     samples: (delay:0.00033333333,),
                 ),
-                alpha: 0.9951538,
+                alpha: 1,
                 beta: 0.06,
             ),
             intake_waveguide: (
@@ -103,7 +103,7 @@
                 chamber1: (
                     samples: (delay:0.00022916666,),
                 ),
-                alpha: 0.38877177,
+                alpha: 1,
                 beta: -0.49987197,
             ),
             extractor_waveguide: (
@@ -133,7 +133,7 @@
                 chamber1: (
                     samples: (delay:0.00045833332,),
                 ),
-                alpha: 1,
+                alpha: 0.004552424,
                 beta: 0.06,
             ),
             intake_waveguide: (
@@ -167,16 +167,10 @@
     ],
     intake_noise_factor: 0.27695146,
     intake_noise_lp: (
-        samples: (
-            delay: 0.00020833334,
-        ),
-        len: 9.744197,
+        delay: 0.00019406239,
     ),
     engine_vibration_filter: (
-        samples: (
-            delay: 0.0033333334,
-        ),
-        len: 160,
+        delay: 0.010829452,
     ),
     muffler: (
         straight_pipe: (
@@ -240,9 +234,6 @@
     exhaust_valve_shift: 0.006414771,
     crankshaft_fluctuation: 0.07406286,
     crankshaft_fluctuation_lp: (
-        samples: (
-            delay: 0.008854167,
-        ),
-        len: 425,
+        delay: 0.005282242,
     ),
 )
