@@ -246,10 +246,27 @@ impl Generator {
             cyl.intake_waveguide.chamber1.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
             cyl.extractor_waveguide.chamber0.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
             cyl.extractor_waveguide.chamber1.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
+
+            cyl.extractor_exhaust = 0.0;
+            cyl.cyl_sound = 0.0;
         }
 
         self.engine.muffler.straight_pipe.chamber0.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
         self.engine.muffler.straight_pipe.chamber1.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
+
+        self.engine.engine_vibration_filter.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
+        self.engine.engine_vibration_filter.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
+
+        self.engine.crankshaft_fluctuation_lp.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
+        self.engine.crankshaft_fluctuation_lp.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
+
+        for muffler_element in self.engine.muffler.muffler_elements.iter_mut() {
+            muffler_element.chamber0.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
+            muffler_element.chamber1.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
+        }
+
+        self.engine.exhaust_collector = 0.0;
+        self.engine.intake_collector = 0.0;
     }
 
     #[inline]
@@ -506,15 +523,18 @@ impl LoopBuffer {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct LowPassFilter {
     pub samples: LoopBuffer,
+    pub len: f32,
 }
 
 impl LowPassFilter {
     pub fn new(freq: f32, samples_per_second: u32) -> LowPassFilter {
-        LowPassFilter { samples: LoopBuffer::new(((samples_per_second as f32 / freq) as u32).min(samples_per_second).max(1) as usize, samples_per_second) }
+        let len = (samples_per_second as f32 / freq).min(samples_per_second as f32).max(1.0);
+        LowPassFilter { samples: LoopBuffer::new(len.ceil() as usize, samples_per_second), len }
     }
 
+    #[inline]
     pub fn get_freq(&self, samples_per_second: u32) -> f32 {
-        samples_per_second as f32 / self.samples.len as f32
+        samples_per_second as f32 / self.len
     }
 
     pub fn filter(&mut self, sample: f32) -> f32 {
@@ -522,50 +542,58 @@ impl LowPassFilter {
         self.samples.advance();
 
         #[inline(always)]
-        unsafe fn sum<S: Simd>(samples: &[f32]) -> f32 {
+        unsafe fn sum<S: Simd>(samples: &[f32], flen: f32) -> f32 {
             let mut i = S::VF32_WIDTH;
             let len = samples.len();
             assert_eq!(len % S::VF32_WIDTH, 0, "LoopBuffer length is not a multiple of the SIMD vector size");
 
             // rolling sum
-            let mut sum = S::loadu_ps(&samples[0]);
+            let mut rolling_sum = S::loadu_ps(&samples[0]);
 
             while i != len {
-                sum += S::loadu_ps(&samples[i]);
+                rolling_sum += S::loadu_ps(&samples[i]);
                 i += S::VF32_WIDTH;
             }
 
-            S::horizontal_add_ps(sum) / len as f32
+            let fract = flen.fract();
+            // only use fractional averaging if flen.fract() > 0.0
+            if fract != 0.0 {
+                // subtract the last element and add it onto the sum again but multiplied with the fractional part of the length
+                (S::horizontal_add_ps(rolling_sum) - samples[flen as usize] * (1.0 - fract)) / flen
+            } else {
+                // normal average
+                S::horizontal_add_ps(rolling_sum) / flen
+            }
         }
 
         // expanded 'simd_runtime_select' macro for feature independency (proc_macro_hygiene)
         if is_x86_feature_detected!("avx2") {
             #[target_feature(enable = "avx2")]
-            unsafe fn call(samples: &[f32]) -> f32 {
-                sum::<Avx2>(samples)
+            unsafe fn call(samples: &[f32], len: f32) -> f32 {
+                sum::<Avx2>(samples, len)
             }
-            unsafe { call(&self.samples.data) }
+            unsafe { call(&self.samples.data, self.len) }
         } else if is_x86_feature_detected!("sse4.1") {
             #[target_feature(enable = "sse4.1")]
-            unsafe fn call(samples: &[f32]) -> f32 {
-                sum::<Sse41>(samples)
+            unsafe fn call(samples: &[f32], len: f32) -> f32 {
+                sum::<Sse41>(samples, len)
             }
-            unsafe { call(&self.samples.data) }
+            unsafe { call(&self.samples.data, self.len) }
         } else if is_x86_feature_detected!("sse2") {
             #[target_feature(enable = "sse2")]
-            unsafe fn call(samples: &[f32]) -> f32 {
-                sum::<Sse2>(samples)
+            unsafe fn call(samples: &[f32], len: f32) -> f32 {
+                sum::<Sse2>(samples, len)
             }
-            unsafe { call(&self.samples.data) }
+            unsafe { call(&self.samples.data, self.len) }
         } else {
-            unsafe { sum::<Scalar>(&self.samples.data) }
+            unsafe { sum::<Scalar>(&self.samples.data, self.len) }
         }
     }
 
     pub fn update(&mut self, freq: f32, samples_per_second: u32) -> Option<Self> {
-        let newfreq_samples = ((samples_per_second as f32 / freq) as u32).min(samples_per_second).max(1) as usize;
+        let newfreq_len = (samples_per_second as f32 / freq).min(samples_per_second as f32).max(1.0);
 
-        if newfreq_samples != self.samples.len {
+        if newfreq_len != self.len {
             Some(Self::new(freq, samples_per_second))
         } else {
             None

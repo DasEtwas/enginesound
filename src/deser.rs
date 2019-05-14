@@ -12,11 +12,6 @@ impl From<LoopBufferDeser> for LoopBuffer {
         let len = (from.delay * SAMPLE_RATE as f32) as usize;
         let bufsize = LoopBuffer::get_best_simd_size(len);
 
-        LoopBuffer {
-            delay: from.delay,
-            len,
-            data: vec![0.0; bufsize],
-            pos: 0,
-        }
+        LoopBuffer { delay: from.delay, len, data: vec![0.0; bufsize], pos: 0 }
     }
 }

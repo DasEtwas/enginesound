@@ -18,7 +18,6 @@ use std::sync::Arc;
 
 mod support;
 
-/// recommended 48000hz, as any other freq produced whining for me on windows
 const SAMPLE_RATE: u32 = 48000;
 const SPEED_OF_SOUND: f32 = 343.0; // m/s
 const SAMPLES_PER_CALLBACK: u32 = 512;
@@ -27,7 +26,6 @@ const WINDOW_HEIGHT: f64 = 800.0;
 const DC_OFFSET_LP_FREQ: f32 = 4.0; // the frequency of the low pass filter which is subtracted from all samples to reduce dc offset and thus clipping
 const MAX_CYLINDERS: usize = 16;
 const MUFFLER_ELEMENT_COUNT: usize = 4;
-const CROSSFADE_SIZE: usize = 64; // length of the fade
 
 const DEFAULT_CONFIG: &[u8] = include_bytes!("default.es");
 
@@ -38,12 +36,12 @@ fn main() {
         .about(clap::crate_description!())
         .arg(Arg::with_name("headless").short("h").long("headless").help("CLI mode without GUI or audio playback").requires("config"))
         .arg(Arg::with_name("config").short("c").long("config").help("Sets the input file to load as an engine config").takes_value(true))
-        .arg(Arg::with_name("volume").short("v").long("volume").help("Sets the master volume").takes_value(true).default_value( "0.1"))
+        .arg(Arg::with_name("volume").short("v").long("volume").help("Sets the master volume").default_value( "0.1"))
         .arg(Arg::with_name("rpm").short("r").long("rpm").help("Engine RPM").takes_value(true))
         .arg(Arg::with_name("warmup_time").short("w").long("warmup_time").help("Sets the time to wait in seconds before recording").default_value_if("headless", None, "3.0"))
         .arg(Arg::with_name("reclen").short("l").long("length").help("Sets the time to record in seconds").default_value_if("headless", None, "5.0"))
         .arg(Arg::with_name("output_file").short("o").long("output").help("Sets the output .wav file path").default_value_if("headless", None, "output.wav"))
-        .arg(Arg::with_name("crossfade").short("f").long("crossfade").help("Crossfades the recording in the middle end-to-start to create a seamless loop, although adjusting the recording's length to the rpm is recommended").requires("headless"))
+        .arg(Arg::with_name("crossfade").short("f").long("crossfade").help("Crossfades the recording in the middle end-to-start to create a seamless loop, although adjusting the recording's length to the rpm is recommended. The value sets the size of the crossfade, where the final output is decreased in length by crossfade_time/2.").default_value_if("headless", None, "0.00133"))
         .get_matches();
 
     let mut bytes;
@@ -98,7 +96,9 @@ fn main() {
 
         generator.generate(&mut output);
 
-        if matches.is_present("crossfade") {
+        if matches.occurrences_of("crossfade") != 0 {
+            let crossfade_size = seconds_to_samples(value_t!(matches.value_of("crossfade"), f32).unwrap().max(1.0 / SAMPLE_RATE as f32));
+
             println!("Crossfading..");
 
             let len = output.len();
@@ -107,11 +107,11 @@ fn main() {
 
             shifted.iter_mut().enumerate().for_each(|(i, x)| *x = output[(half_len + i) % len]);
 
-            output = Vec::with_capacity(shifted.len() - CROSSFADE_SIZE / 2);
+            output = Vec::with_capacity(shifted.len() - crossfade_size / 2);
             output.extend_from_slice(&shifted[..half_len]);
-            output.extend_from_slice(&shifted[(half_len + CROSSFADE_SIZE / 2)..]);
+            output.extend_from_slice(&shifted[(half_len + crossfade_size / 2)..]);
 
-            let fade_len = CROSSFADE_SIZE / 2;
+            let fade_len = crossfade_size / 2;
             let start = half_len - fade_len;
             for i in start..half_len {
                 let fade = (i - start) as f32 / fade_len as f32;
