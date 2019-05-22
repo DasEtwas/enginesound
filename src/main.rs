@@ -7,14 +7,11 @@ mod gen;
 mod gui;
 mod recorder;
 
-use crate::gui::MenuState;
-use crate::recorder::Recorder;
+use crate::{gui::MenuState, recorder::Recorder};
 use clap::{value_t, App, Arg};
 use conrod_core::text::Font;
 use glium::Surface;
-use std::fs::File;
-use std::io::Read;
-use std::sync::Arc;
+use std::{fs::File, io::Read, sync::Arc};
 
 mod support;
 
@@ -47,14 +44,16 @@ fn main() {
     let mut bytes;
     let mut engine: Engine = match ron::de::from_bytes({
         bytes = match matches.value_of("config") {
-            Some(path) => match File::open(path) {
-                Ok(mut file) => {
-                    let mut bytes = Vec::new();
-                    file.read_to_end(&mut bytes).unwrap();
-                    println!("Loaded config file \"{}\"", path);
-                    bytes
+            Some(path) => {
+                match File::open(path) {
+                    Ok(mut file) => {
+                        let mut bytes = Vec::new();
+                        file.read_to_end(&mut bytes).unwrap();
+                        println!("Loaded config file \"{}\"", path);
+                        bytes
+                    },
+                    Err(e) => panic!("Failed to open config file \"{}\": {}", path, e),
                 }
-                Err(e) => panic!("Failed to open config file \"{}\": {}", path, e),
             },
             None => DEFAULT_CONFIG.to_vec(),
         };
@@ -63,7 +62,7 @@ fn main() {
         Ok(engine) => {
             println!("Successfully loaded config");
             engine
-        }
+        },
         Err(e) => panic!("Failed to parse config: {}", e),
     };
 
@@ -168,17 +167,22 @@ fn main() {
                     }
 
                     match event {
-                        glium::glutin::Event::WindowEvent { event, .. } => {
+                        glium::glutin::Event::WindowEvent {
+                            event, ..
+                        } => {
                             match event {
                                 // Break from the loop upon `Escape`.
                                 glium::glutin::WindowEvent::CloseRequested
                                 | glium::glutin::WindowEvent::KeyboardInput {
-                                    input: glium::glutin::KeyboardInput { virtual_keycode: Some(glium::glutin::VirtualKeyCode::Escape), .. },
+                                    input:
+                                        glium::glutin::KeyboardInput {
+                                            virtual_keycode: Some(glium::glutin::VirtualKeyCode::Escape), ..
+                                        },
                                     ..
                                 } => break 'main,
                                 _ => (),
                             }
-                        }
+                        },
                         _ => (),
                     }
                 }

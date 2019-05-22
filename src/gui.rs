@@ -467,7 +467,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = 0.5;
                 let prev_val = generator.engine.intake_valve_shift;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("Intake valve cam shift {:.2} cycles", prev_val).as_str())
+                    .label(format!("Intake valve cam shift {:.2} cycles", -prev_val).as_str())
                     .label_font_size(LABEL_FONT_SIZE)
                     .padded_w_of(ids.canvas, PAD)
                     .down(5.0)
@@ -482,7 +482,7 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
                 const MAX: f32 = 0.5;
                 let prev_val = generator.engine.exhaust_valve_shift;
                 for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("Exhaust valve cam shift {:.2} cycles", prev_val).as_str())
+                    .label(format!("Exhaust valve cam shift {:.2} cycles", -prev_val).as_str())
                     .label_font_size(LABEL_FONT_SIZE)
                     .padded_w_of(ids.canvas, PAD)
                     .down(5.0)

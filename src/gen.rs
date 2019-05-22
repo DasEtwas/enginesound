@@ -18,10 +18,8 @@ use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use serde::{Deserialize, Serialize};
 use simdeez::{avx2::*, scalar::*, sse2::*, sse41::*, *};
-use std::{
-    ops::{Deref, DerefMut},
-    time::SystemTime,
-};
+use std::{ops::{Deref, DerefMut},
+          time::SystemTime};
 
 pub const PI2F: f32 = 2.0 * std::f32::consts::PI;
 pub const PI4F: f32 = 4.0 * std::f32::consts::PI;
@@ -31,15 +29,15 @@ pub const WAVEGUIDE_MAX_AMP: f32 = 20.0; // at this amplitude, a reciprocal damp
 
 #[derive(Serialize, Deserialize)]
 pub struct Muffler {
-    pub straight_pipe: WaveGuide,
+    pub straight_pipe:    WaveGuide,
     pub muffler_elements: Vec<WaveGuide>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct Engine {
-    pub rpm: f32,
-    pub intake_volume: f32,
-    pub exhaust_volume: f32,
+    pub rpm:                      f32,
+    pub intake_volume:            f32,
+    pub exhaust_volume:           f32,
     pub engine_vibrations_volume: f32,
 
     pub cylinders: Vec<Cylinder>,
@@ -118,9 +116,9 @@ pub struct Cylinder {
     /// waveguide from the other end of the exhaust WG to the exhaust collector
     pub extractor_waveguide: WaveGuide,
     // waveguide alpha values for when the valves are closed or opened
-    pub intake_open_refl: f32,
-    pub intake_closed_refl: f32,
-    pub exhaust_open_refl: f32,
+    pub intake_open_refl:    f32,
+    pub intake_closed_refl:  f32,
+    pub exhaust_open_refl:   f32,
     pub exhaust_closed_refl: f32,
 
     pub piston_motion_factor: f32,
@@ -140,12 +138,12 @@ impl Cylinder {
     /// returns (intake, exhaust, piston + ignition, waveguide dampened)
     #[inline]
     pub(in crate::gen) fn pop(&mut self, crank_pos: f32, exhaust_collector: f32, intake_valve_shift: f32, exhaust_valve_shift: f32) -> (f32, f32, f32, bool) {
-        let crank = (crank_pos + self.crank_offset) % 1.0;
+        let crank = (crank_pos + self.crank_offset).fract();
 
         self.cyl_sound = piston_motion(crank) * self.piston_motion_factor + fuel_ignition(crank, self.ignition_time) * self.ignition_factor;
 
-        let ex_valve = exhaust_valve(crank + exhaust_valve_shift);
-        let in_valve = intake_valve(crank + intake_valve_shift);
+        let ex_valve = exhaust_valve((crank + exhaust_valve_shift).fract());
+        let in_valve = intake_valve((crank + intake_valve_shift).fract());
 
         self.exhaust_waveguide.alpha = self.exhaust_closed_refl + (self.exhaust_open_refl - self.exhaust_closed_refl) * ex_valve;
         self.intake_waveguide.alpha = self.intake_closed_refl + (self.intake_open_refl - self.intake_closed_refl) * in_valve;
@@ -212,7 +210,7 @@ impl Generator {
         let mut i = 1.0;
         let mut ii = 0;
         while ii < buf.len() {
-            self.engine.crankshaft_pos = (crankshaft_pos + i * self.get_rpm() / samples_per_second) % 1.0;
+            self.engine.crankshaft_pos = (crankshaft_pos + i * self.get_rpm() / samples_per_second).fract();
             let samples = self.gen();
             let sample = (samples.0 * self.get_intake_volume() + samples.1 * self.get_engine_vibrations_volume() + samples.2 * self.get_exhaust_volume())
                 * self.get_volume();
@@ -345,8 +343,10 @@ impl Generator {
                 self.engine.intake_valve_shift,
                 self.engine.exhaust_valve_shift,
             );
+
             self.engine.intake_collector += cyl_intake;
             self.engine.exhaust_collector += cyl_exhaust;
+
             engine_vibration += cyl_vib;
             cylinder_dampened |= dampened;
         }
@@ -371,7 +371,7 @@ impl Generator {
 
         for cylinder in self.engine.cylinders.iter_mut() {
             // modulate intake
-            cylinder.push(self.engine.intake_collector / num_cyl + intake_noise * intake_valve((self.engine.crankshaft_pos + cylinder.crank_offset) % 1.0));
+            cylinder.push(self.engine.intake_collector / num_cyl + intake_noise * intake_valve((self.engine.crankshaft_pos + cylinder.crank_offset).fract()));
         }
 
         self.engine.muffler.straight_pipe.push(self.engine.exhaust_collector, muffler_wg_ret.0);
@@ -475,7 +475,12 @@ impl LoopBuffer {
     /// The internal sample buffer size is rounded up to the currently best SIMD implementation's float vector size.
     pub fn new(len: usize, samples_per_second: u32) -> LoopBuffer {
         let bufsize = LoopBuffer::get_best_simd_size(len);
-        LoopBuffer { delay: len as f32 / samples_per_second as f32, len, data: vec![0.0; bufsize], pos: 0 }
+        LoopBuffer {
+            delay: len as f32 / samples_per_second as f32,
+            len,
+            data: vec![0.0; bufsize],
+            pos: 0,
+        }
     }
 
     /// Returns `(size / SIMD_REGISTER_SIZE).ceil() * SIMD_REGISTER_SIZE`, where `SIMD` may be the best simd implementation at runtime.
@@ -533,7 +538,11 @@ pub struct LowPassFilter {
 impl LowPassFilter {
     pub fn new(freq: f32, samples_per_second: u32) -> LowPassFilter {
         let len = (samples_per_second as f32 / freq).min(samples_per_second as f32).max(1.0);
-        LowPassFilter { samples: LoopBuffer::new(len.ceil() as usize, samples_per_second), delay: 1.0 / freq, len }
+        LowPassFilter {
+            samples: LoopBuffer::new(len.ceil() as usize, samples_per_second),
+            delay: 1.0 / freq,
+            len,
+        }
     }
 
     #[inline]
@@ -616,7 +625,9 @@ pub struct DelayLine {
 
 impl DelayLine {
     pub fn new(delay: usize, samples_per_second: u32) -> DelayLine {
-        DelayLine { samples: LoopBuffer::new(delay, samples_per_second) }
+        DelayLine {
+            samples: LoopBuffer::new(delay, samples_per_second)
+        }
     }
 
     pub fn pop(&mut self) -> f32 {
@@ -649,8 +660,13 @@ fn piston_motion(crank_pos: f32) -> f32 {
 }
 
 fn fuel_ignition(crank_pos: f32, ignition_time: f32) -> f32 {
-    if 0.0 < crank_pos && crank_pos < ignition_time {
+    /*if 0.0 < crank_pos && crank_pos < ignition_time {
         (PI2F * (crank_pos * ignition_time + 0.5)).sin()
+    } else {
+        0.0
+    }*/
+    if 0.5 < crank_pos && crank_pos < ignition_time / 2.0 + 0.5 {
+        (PI2F * ((crank_pos - 0.5) / ignition_time)).sin()
     } else {
         0.0
     }
