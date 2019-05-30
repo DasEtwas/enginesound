@@ -38,7 +38,8 @@ loosely based on [this paper](https://www.researchgate.net/publication/280086598
  - volume/rpm/length arguments to control master volume/engine rpm/recording length
  - crossfade argument which cuts the recording in half, swaps the halves and
    fades the middle for x seconds (reduces output length by x/2 seconds), used to make seamless loops
- - warmup time argument to wait for the resonances in the acoustic chambers to be established before recording
+ - warmup time argument to wait for the resonances in the acoustic chambers to be
+   established before recording
 ```
 
 ## Building ##
