@@ -51,10 +51,10 @@ libSDL2 (and -devel) packages will need to be installed:
 
 ## Preview ##
 ### GUI ###
-![Image](gui_ff0d902.PNG)
+![Image](example.png)
 
 ### Sound ###
-Generated using the config shown above while adjusting the RPM manually: [Audio file](https://raw.githubusercontent.com/DasEtwas/enginesound/master/example_ff0d902.mp3)
+Generated using the config shown above while adjusting the RPM manually: [Audio file](https://raw.githubusercontent.com/DasEtwas/enginesound/master/example.mp3)
 
 ## Packaging ##
 ### Windows ###
