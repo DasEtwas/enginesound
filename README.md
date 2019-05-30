@@ -47,7 +47,7 @@ loosely based on [this paper](https://www.researchgate.net/publication/280086598
 ## Building ##
 
 libSDL2 (and -devel) packages will need to be installed:
-[Instructions on how to install SDL](https://github.com/Rust-SDL2/rust-sdl2/blob/master/README.md)
+[Instructions on how to build with Rust-SDL2](https://github.com/Rust-SDL2/rust-sdl2/blob/master/README.md#requirements)
 
 ## Preview ##
 ### GUI ###
