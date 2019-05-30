@@ -975,5 +975,5 @@ fn recording_name() -> String {
 fn config_name() -> String {
     let time = Local::now();
 
-    format!("enginesound_{:02}{:02}{:04}-{:02}{:02}{:02}.es", time.day(), time.month(), time.year(), time.hour(), time.minute(), time.second())
+    format!("enginesound_{:02}{:02}{:04}-{:02}{:02}{:02}.esc", time.day(), time.month(), time.year(), time.hour(), time.minute(), time.second())
 }

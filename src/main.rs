@@ -24,7 +24,7 @@ const DC_OFFSET_LP_FREQ: f32 = 4.0; // the frequency of the low pass filter whic
 const MAX_CYLINDERS: usize = 16;
 const MUFFLER_ELEMENT_COUNT: usize = 4;
 
-const DEFAULT_CONFIG: &[u8] = include_bytes!("default.es");
+const DEFAULT_CONFIG: &[u8] = include_bytes!("default.esc");
 
 fn main() {
     let matches = App::new("Engine Sound Generator")
