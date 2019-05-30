@@ -154,7 +154,7 @@ impl MenuState {
 /// Instantiate a GUI demonstrating every widget available in conrod.
 pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Generator>>, menu_state: &mut MenuState) {
     const PAD_TOP: conrod_core::Scalar = 10.0;
-    const PAD: conrod_core::Scalar = 30.0;
+    const PAD: conrod_core::Scalar = 15.0;
     const BUTTONWIDTH: conrod_core::Scalar = 700.0;
     const DOWN_SPACE: conrod_core::Scalar = 6.0;
     const LINE_SIZE: conrod_core::Scalar = 12.0;
@@ -163,18 +163,12 @@ pub fn gui(ui: &mut conrod_core::UiCell, ids: &Ids, generator: Arc<RwLock<Genera
     widget::Canvas::new().pad(PAD).pad_right(PAD + 20.0).pad_top(0.0).scroll_kids_vertically().set(ids.canvas, ui);
     widget::Scrollbar::y_axis(ids.canvas).auto_hide(true).w(25.0).set(ids.canvas_scrollbar, ui);
 
-    widget::Text::new("Engine Sound Generator")
-        .font_size(24)
-        .top_left_with_margins(PAD_TOP, PAD)
-        .w_h(ui.win_w - PAD * 2.0, LINE_SIZE)
-        .mid_left_of(ids.canvas)
-        .set(ids.title, ui);
-
     {
         let mut generator = generator.write();
-        widget::Text::new(format!("Current sampler duty: {:.2}%", generator.sampler_duty * 100.0).as_str())
-            .down(DOWN_SPACE + 8.0)
-            .w(700.0)
+        widget::Text::new(format!("Current sampler duty: {:.0}%", generator.sampler_duty * 100.0).as_str())
+            .top_left_with_margins(PAD_TOP, PAD)
+            .w_h(700.0, LINE_SIZE)
+            .mid_left_of(ids.canvas)
             .set(ids.duty_display, ui);
 
         {
