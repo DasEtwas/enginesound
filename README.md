@@ -14,7 +14,8 @@ loosely based on [this paper](https://www.researchgate.net/publication/280086598
  - 48khz mono WAV recording
  - RON SerDe of engine parameters
  - SIMD accelerated low pass filtering with simdeez
- - Pseudorealistic acoustic pipe/chamber simulation (speed of sound, end reflection) based on the above paper
+ - Pseudorealistic acoustic pipe/chamber simulation (speed of sound, end reflection)
+   based on the above paper
  - Advanced clap-rs powered CLI
  - Intake, Exhaust and Engine vibrations mixing
 ```
@@ -35,8 +36,8 @@ loosely based on [this paper](https://www.researchgate.net/publication/280086598
  - headless mode which does not start audio streaming or a GUI
  - config argument to specify the file containing RON-serialized parameters
  - volume/rpm/length arguments to control master volume/engine rpm/recording length
- - crossfade argument which cuts the recording in half, swaps the halves and fades the middle for x seconds (reduces output length by x/2 seconds),
-   used to make seamless loops
+ - crossfade argument which cuts the recording in half, swaps the halves and
+   fades the middle for x seconds (reduces output length by x/2 seconds), used to make seamless loops
  - warmup time argument to wait for the resonances in the acoustic chambers to be established before recording
 ```
 
