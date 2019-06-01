@@ -1,6 +1,7 @@
 use hound::{SampleFormat, WavSpec};
 use parking_lot::Mutex;
 use std::{fs::File,
+          io::BufWriter,
           sync::{atomic::{AtomicBool, Ordering},
                  Arc},
           time::Duration};
@@ -32,7 +33,7 @@ impl Recorder {
                 let lock = block_lock.lock();
 
                 let mut wav_writer = match hound::WavWriter::new(
-                    File::create(filename.as_str()).unwrap_or_else(|e| panic!("Failed to create/open a file for writing the WAV: {}", e)),
+                    BufWriter::new(File::create(filename.as_str()).unwrap_or_else(|e| panic!("Failed to create/open a file for writing the WAV: {}", e))),
                     WavSpec {
                         channels: 1, sample_rate: crate::SAMPLE_RATE, bits_per_sample: 16, sample_format: SampleFormat::Int
                     },
