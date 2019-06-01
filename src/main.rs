@@ -7,7 +7,7 @@ mod gen;
 mod gui;
 mod recorder;
 
-use crate::{gui::MenuState, recorder::Recorder};
+use crate::recorder::Recorder;
 use clap::{value_t, App, Arg};
 use conrod_core::text::Font;
 use glium::Surface;
@@ -135,8 +135,6 @@ fn main() {
 
         // GUI
         {
-            let mut menu_state = MenuState::new();
-
             // Build the window.
             let mut events_loop = glium::glutin::EventsLoop::new();
             let window = glium::glutin::WindowBuilder::new()
@@ -171,7 +169,11 @@ fn main() {
                             event, ..
                         } => {
                             match event {
-                                // Break from the loop upon `Escape`.
+                                glium::glutin::WindowEvent::DroppedFile(path) => {
+                                    if let Some(new_engine) = crate::load_engine(path.to_str().unwrap_or("<invalid UTF-8>").to_owned()) {
+                                        generator.write().engine = new_engine;
+                                    }
+                                },
                                 glium::glutin::WindowEvent::CloseRequested
                                 | glium::glutin::WindowEvent::KeyboardInput {
                                     input:
@@ -187,7 +189,7 @@ fn main() {
                     }
                 }
 
-                gui::gui(&mut ui.set_widgets(), &ids, generator.clone(), &mut menu_state);
+                gui::gui(&mut ui.set_widgets(), &ids, generator.clone());
 
                 if let Some(primitives) = ui.draw_if_changed() {
                     renderer.fill(&display.0, primitives, &image_map);
@@ -221,4 +223,25 @@ pub fn samples_to_seconds(samples: usize) -> f32 {
 /// returns meters
 pub fn samples_to_distance(samples: usize) -> f32 {
     samples_to_seconds(samples) * SPEED_OF_SOUND
+}
+
+pub fn load_engine(path: String) -> Option<Engine> {
+    match File::open(&path) {
+        Ok(file) => {
+            match ron::de::from_reader::<_, Engine>(file) {
+                Ok(engine) => {
+                    println!("Successfully loaded engine config \"{}\"", &path);
+                    Some(engine)
+                },
+                Err(e) => {
+                    eprintln!("Failed to load config \"{}\": {}", &path, e);
+                    None
+                },
+            }
+        },
+        Err(e) => {
+            eprintln!("Failed to load file \"{}\": {}", &path, e);
+            None
+        },
+    }
 }
