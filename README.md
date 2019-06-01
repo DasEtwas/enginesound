@@ -22,13 +22,13 @@ loosely based on [this paper](https://www.researchgate.net/publication/280086598
  - Intake, Exhaust and Engine vibrations mixing
 ```
 
-#### GUI Application specific ####
+#### GUI specific ####
 ```
  - GUI made with conrod/glium
  - Real-time preview of parameters with SDL2 audio
  - Real-time interactive parameter sliders with small descriptions
  - Record/Stop button
- - Filebrowser to select RON files containing serialized parameters to load with the Load button
+ - Dropping a config into the window loads the config
  - Save button to save the current parameters into a timestamped file in the current working directory
  - Reset sampler button to kill resonances in all acoustic chambers
 ```
