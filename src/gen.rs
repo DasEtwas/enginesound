@@ -18,8 +18,7 @@ use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use serde::{Deserialize, Serialize};
 use simdeez::{avx2::*, scalar::*, sse2::*, sse41::*, *};
-use std::{ops::{Deref, DerefMut},
-          time::SystemTime};
+use std::time::SystemTime;
 
 pub const PI2F: f32 = 2.0 * std::f32::consts::PI;
 pub const PI4F: f32 = 4.0 * std::f32::consts::PI;
@@ -29,15 +28,15 @@ pub const WAVEGUIDE_MAX_AMP: f32 = 20.0; // at this amplitude, a reciprocal damp
 
 #[derive(Serialize, Deserialize)]
 pub struct Muffler {
-    pub straight_pipe:    WaveGuide,
+    pub straight_pipe: WaveGuide,
     pub muffler_elements: Vec<WaveGuide>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct Engine {
-    pub rpm:                      f32,
-    pub intake_volume:            f32,
-    pub exhaust_volume:           f32,
+    pub rpm: f32,
+    pub intake_volume: f32,
+    pub exhaust_volume: f32,
     pub engine_vibrations_volume: f32,
 
     pub cylinders: Vec<Cylinder>,
@@ -53,6 +52,8 @@ pub struct Engine {
     pub exhaust_valve_shift: f32,
     pub crankshaft_fluctuation: f32,
     pub crankshaft_fluctuation_lp: LowPassFilter,
+    #[serde(skip)]
+    pub crankshaft_noise: Noise,
     // running values
     /// crankshaft position, 0.0-1.0
     #[serde(skip)]
@@ -77,17 +78,9 @@ impl Default for Noise {
     }
 }
 
-impl Deref for Noise {
-    type Target = XorShiftRng;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl DerefMut for Noise {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
+impl Noise {
+    pub fn step(&mut self) -> f32 {
+        self.inner.next_u32() as f32 / (std::u32::MAX as f32 / 2.0) - 1.0
     }
 }
 
@@ -116,9 +109,9 @@ pub struct Cylinder {
     /// waveguide from the other end of the exhaust WG to the exhaust collector
     pub extractor_waveguide: WaveGuide,
     // waveguide alpha values for when the valves are closed or opened
-    pub intake_open_refl:    f32,
-    pub intake_closed_refl:  f32,
-    pub exhaust_open_refl:   f32,
+    pub intake_open_refl: f32,
+    pub intake_closed_refl: f32,
+    pub exhaust_open_refl: f32,
     pub exhaust_closed_refl: f32,
 
     pub piston_motion_factor: f32,
@@ -320,8 +313,7 @@ impl Generator {
     /// generates one sample worth of data
     /// returns  `(intake, engine vibrations, exhaust, waveguides dampened)`
     fn gen(&mut self) -> (f32, f32, f32, bool) {
-        let intake_noise = self.engine.intake_noise_lp.filter(self.engine.intake_noise.next_u32() as f32 / (std::u32::MAX as f32 / 2.0) - 1.0)
-            * self.engine.intake_noise_factor;
+        let intake_noise = self.engine.intake_noise_lp.filter(self.engine.intake_noise.step()) * self.engine.intake_noise_factor;
 
         let mut engine_vibration = 0.0;
 
@@ -331,8 +323,7 @@ impl Generator {
         self.engine.exhaust_collector = 0.0;
         self.engine.intake_collector = 0.0;
 
-        let crankshaft_fluctuation_offset =
-            self.engine.crankshaft_fluctuation_lp.filter(self.engine.intake_noise.next_u32() as f32 / (std::u32::MAX as f32 / 2.0) - 1.0);
+        let crankshaft_fluctuation_offset = self.engine.crankshaft_fluctuation_lp.filter(self.engine.crankshaft_noise.step());
 
         let mut cylinder_dampened = false;
 
@@ -475,12 +466,7 @@ impl LoopBuffer {
     /// The internal sample buffer size is rounded up to the currently best SIMD implementation's float vector size.
     pub fn new(len: usize, samples_per_second: u32) -> LoopBuffer {
         let bufsize = LoopBuffer::get_best_simd_size(len);
-        LoopBuffer {
-            delay: len as f32 / samples_per_second as f32,
-            len,
-            data: vec![0.0; bufsize],
-            pos: 0,
-        }
+        LoopBuffer { delay: len as f32 / samples_per_second as f32, len, data: vec![0.0; bufsize], pos: 0 }
     }
 
     /// Returns `(size / SIMD_REGISTER_SIZE).ceil() * SIMD_REGISTER_SIZE`, where `SIMD` may be the best simd implementation at runtime.
@@ -538,11 +524,7 @@ pub struct LowPassFilter {
 impl LowPassFilter {
     pub fn new(freq: f32, samples_per_second: u32) -> LowPassFilter {
         let len = (samples_per_second as f32 / freq).min(samples_per_second as f32).max(1.0);
-        LowPassFilter {
-            samples: LoopBuffer::new(len.ceil() as usize, samples_per_second),
-            delay: 1.0 / freq,
-            len,
-        }
+        LowPassFilter { samples: LoopBuffer::new(len.ceil() as usize, samples_per_second), delay: 1.0 / freq, len }
     }
 
     #[inline]
@@ -625,9 +607,7 @@ pub struct DelayLine {
 
 impl DelayLine {
     pub fn new(delay: usize, samples_per_second: u32) -> DelayLine {
-        DelayLine {
-            samples: LoopBuffer::new(delay, samples_per_second)
-        }
+        DelayLine { samples: LoopBuffer::new(delay, samples_per_second) }
     }
 
     pub fn pop(&mut self) -> f32 {

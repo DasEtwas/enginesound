@@ -52,7 +52,10 @@ fn main() {
                         println!("Loaded config file \"{}\"", path);
                         bytes
                     },
-                    Err(e) => panic!("Failed to open config file \"{}\": {}", path, e),
+                    Err(e) => {
+                        eprintln!("Failed to open config file \"{}\": {}", path, e);
+                        std::process::exit(1);
+                    },
                 }
             },
             None => DEFAULT_CONFIG.to_vec(),
@@ -63,7 +66,10 @@ fn main() {
             println!("Successfully loaded config");
             engine
         },
-        Err(e) => panic!("Failed to parse config: {}", e),
+        Err(e) => {
+            eprintln!("Failed to parse config: {}", e);
+            std::process::exit(2);
+        },
     };
 
     match value_t!(matches.value_of("rpm"), f32) {
@@ -96,12 +102,19 @@ fn main() {
         generator.generate(&mut output);
 
         if matches.occurrences_of("crossfade") != 0 {
-            let crossfade_size = seconds_to_samples(value_t!(matches.value_of("crossfade"), f32).unwrap().max(1.0 / SAMPLE_RATE as f32));
+            let crossfade_duration = value_t!(matches.value_of("crossfade"), f32).unwrap();
+            let crossfade_size = seconds_to_samples(crossfade_duration.max(1.0 / SAMPLE_RATE as f32));
+
+            if crossfade_size >= crossfade_size {
+                println!("Crossfade duration is too long {}", crossfade_duration);
+                std::process::exit(4);
+            }
 
             println!("Crossfading..");
 
             let len = output.len();
             let half_len = len / 2;
+
             let mut shifted = output.clone();
 
             shifted.iter_mut().enumerate().for_each(|(i, x)| *x = output[(half_len + i) % len]);
@@ -112,7 +125,8 @@ fn main() {
 
             let fade_len = crossfade_size / 2;
             let start = half_len - fade_len;
-            for i in start..half_len {
+            let end = half_len;
+            for i in start..end {
                 let fade = (i - start) as f32 / fade_len as f32;
                 output[i] = shifted[i] * (1.0 - fade) + shifted[i + fade_len] * fade;
             }
@@ -130,7 +144,10 @@ fn main() {
 
         let audio = match audio::init(generator.clone(), SAMPLE_RATE) {
             Ok(audio) => audio,
-            Err(e) => panic!("Failed to initialize audio {}", e),
+            Err(e) => {
+                eprintln!("Failed to initialize SDL2 audio: {}", e);
+                std::process::exit(3);
+            },
         };
 
         // GUI

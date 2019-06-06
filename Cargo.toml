@@ -1,10 +1,10 @@
 [package]
 name = "enginesound"
-version = "1.0.1"
-authors = ["dasetwas"]
+version = "1.1.0"
+authors = ["https://github.com/DasEtwas/"]
 edition = "2018"
 description = """
-GUI Application used to generate purely synthetic engine sounds with advanced options in real-time, written in Rust
+GUI Application used to generate purely synthetic engine sounds with advanced options in real-time, written in Rust.
 It features real-time recording of the engine, a CLI interface, automatic crossfading to create seamless loops in the CLI and preset saving/loading capabilities.
 """
 
