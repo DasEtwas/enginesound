@@ -41,7 +41,7 @@ fn main() {
         .arg(Arg::with_name("crossfade").short("f").long("crossfade").help("Crossfades the recording in the middle end-to-start to create a seamless loop, although adjusting the recording's length to the rpm is recommended. The value sets the size of the crossfade, where the final output is decreased in length by crossfade_time/2.").default_value_if("headless", None, "0.00133"))
         .get_matches();
 
-    let mut bytes;
+    let bytes;
     let mut engine: Engine = match ron::de::from_bytes({
         bytes = match matches.value_of("config") {
             Some(path) => {
