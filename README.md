@@ -1,5 +1,4 @@
 # enginesound
-![Lines of Code](https://tokei.rs/b1/github/dasetwas/enginesound?category=code)
 
 GUI Application used to generate purely synthetic engine sounds with advanced options written in Rust
 
@@ -54,7 +53,7 @@ libSDL2 (and -devel) packages will need to be installed:
 ![Image](example.png)
 
 ### Sound ###
-Generated using the config shown above while adjusting the RPM manually: [Audio file](https://raw.githubusercontent.com/DasEtwas/enginesound/master/example.mp3)
+Generated using the config shown above while adjusting the RPM manually: [Audio file](example.mp3)
 
 ## Packaging ##
 ### Windows ###
