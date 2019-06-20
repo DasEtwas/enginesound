@@ -1,5 +1,4 @@
 # enginesound
-![Lines of Code](https://tokei.rs/b1/github/dasetwas/enginesound?category=code)
 
 GUI Application used to generate purely synthetic engine sounds with advanced options written in Rust
 
@@ -50,11 +49,34 @@ libSDL2 (and -devel) packages will need to be installed:
 [Instructions on how to build with Rust-SDL2](https://github.com/Rust-SDL2/rust-sdl2/blob/master/README.md#requirements)
 
 ## Preview ##
+### CLI ###
+```
+USAGE:
+    enginesound [FLAGS] [OPTIONS]
+
+FLAGS:
+        --help        Prints help information
+    -h, --headless    CLI mode without GUI or audio playback
+    -V, --version     Prints version information
+
+OPTIONS:
+    -c, --config <config>              Sets the input file to load as an engine config
+    -f, --crossfade <crossfade>        Crossfades the recording in the middle end-to-start to create a seamless loop,
+                                       although adjusting the recording's length to the rpm is recommended. The value
+                                       sets the size of the crossfade, where the final output is decreased in length by
+                                       crossfade_time/2.
+    -o, --output <output_file>         Sets the output .wav file path
+    -l, --length <reclen>              Sets the time to record in seconds
+    -r, --rpm <rpm>                    Engine RPM
+    -v, --volume <volume>              Sets the master volume [default: 0.1]
+    -w, --warmup_time <warmup_time>    Sets the time to wait in seconds before recording
+```
+
 ### GUI ###
 ![Image](example.png)
 
 ### Sound ###
-Generated using the config shown above while adjusting the RPM manually: [Audio file](https://raw.githubusercontent.com/DasEtwas/enginesound/master/example.mp3)
+Generated using the config shown above while adjusting the RPM manually: [Audio file](example.mp3)
 
 ## Packaging ##
 ### Windows ###
