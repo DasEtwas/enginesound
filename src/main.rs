@@ -105,7 +105,7 @@ fn main() {
             let crossfade_duration = value_t!(matches.value_of("crossfade"), f32).unwrap();
             let crossfade_size = seconds_to_samples(crossfade_duration.max(1.0 / SAMPLE_RATE as f32));
 
-            if crossfade_size >= crossfade_size {
+            if crossfade_size >= output.len() {
                 println!("Crossfade duration is too long {}", crossfade_duration);
                 std::process::exit(4);
             }
