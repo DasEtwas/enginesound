@@ -162,6 +162,10 @@ fn main() {
                 .with_resizable(true);
             let context = glium::glutin::ContextBuilder::new().with_vsync(true).with_multisampling(4);
             let display = glium::Display::new(window, context, &events_loop).unwrap();
+
+            let mut image_map = conrod_core::image::Map::<glium::texture::Texture2d>::new();
+            image_map.insert(gui::generate_waterfall_texture(&display));
+
             let display = support::GliumDisplayWinitWrapper(display);
 
             let mut ui = conrod_core::UiBuilder::new([WINDOW_WIDTH, WINDOW_HEIGHT]).theme(gui::theme()).build();
@@ -170,8 +174,6 @@ fn main() {
             ui.fonts.insert(Font::from_bytes(&include_bytes!("../fonts/NotoSans/NotoSans-Regular.ttf")[..]).unwrap());
 
             let mut renderer = conrod_glium::Renderer::new(&display.0).unwrap();
-
-            let image_map = conrod_core::image::Map::<glium::texture::Texture2d>::new();
 
             let mut event_loop = support::EventLoop::new();
             'main: loop {

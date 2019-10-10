@@ -28,15 +28,15 @@ pub const WAVEGUIDE_MAX_AMP: f32 = 20.0; // at this amplitude, a reciprocal damp
 
 #[derive(Serialize, Deserialize)]
 pub struct Muffler {
-    pub straight_pipe: WaveGuide,
+    pub straight_pipe:    WaveGuide,
     pub muffler_elements: Vec<WaveGuide>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct Engine {
-    pub rpm: f32,
-    pub intake_volume: f32,
-    pub exhaust_volume: f32,
+    pub rpm:                      f32,
+    pub intake_volume:            f32,
+    pub exhaust_volume:           f32,
     pub engine_vibrations_volume: f32,
 
     pub cylinders: Vec<Cylinder>,
@@ -109,9 +109,9 @@ pub struct Cylinder {
     /// waveguide from the other end of the exhaust WG to the exhaust collector
     pub extractor_waveguide: WaveGuide,
     // waveguide alpha values for when the valves are closed or opened
-    pub intake_open_refl: f32,
-    pub intake_closed_refl: f32,
-    pub exhaust_open_refl: f32,
+    pub intake_open_refl:    f32,
+    pub intake_closed_refl:  f32,
+    pub exhaust_open_refl:   f32,
     pub exhaust_closed_refl: f32,
 
     pub piston_motion_factor: f32,
@@ -164,7 +164,6 @@ impl Cylinder {
 }
 
 pub struct Generator {
-    pub sampler_duty: f32,
     pub recorder: Option<Recorder>,
     pub gui_graph: Vec<f32>,
     pub volume: f32,
@@ -181,7 +180,6 @@ pub struct Generator {
 impl Generator {
     pub(crate) fn new(samples_per_second: u32, engine: Engine, dc_lp: LowPassFilter) -> Generator {
         Generator {
-            sampler_duty: 0.0_f32,
             recorder: None,
             gui_graph: vec![0.0; 2 * SAMPLES_PER_CALLBACK as usize],
             volume: 0.1_f32,
@@ -412,8 +410,8 @@ impl WaveGuide {
     }
 
     pub fn pop(&mut self) -> (f32, f32, bool) {
-        let (c1_out, dampened_c1) = WaveGuide::dampen(self.chamber1.pop());;
-        let (c0_out, dampened_c0) = WaveGuide::dampen(self.chamber0.pop());;
+        let (c1_out, dampened_c1) = WaveGuide::dampen(self.chamber1.pop());
+        let (c0_out, dampened_c0) = WaveGuide::dampen(self.chamber0.pop());
         self.c1_out = c1_out;
         self.c0_out = c0_out;
 
@@ -466,7 +464,12 @@ impl LoopBuffer {
     /// The internal sample buffer size is rounded up to the currently best SIMD implementation's float vector size.
     pub fn new(len: usize, samples_per_second: u32) -> LoopBuffer {
         let bufsize = LoopBuffer::get_best_simd_size(len);
-        LoopBuffer { delay: len as f32 / samples_per_second as f32, len, data: vec![0.0; bufsize], pos: 0 }
+        LoopBuffer {
+            delay: len as f32 / samples_per_second as f32,
+            len,
+            data: vec![0.0; bufsize],
+            pos: 0,
+        }
     }
 
     /// Returns `(size / SIMD_REGISTER_SIZE).ceil() * SIMD_REGISTER_SIZE`, where `SIMD` may be the best simd implementation at runtime.
@@ -524,7 +527,11 @@ pub struct LowPassFilter {
 impl LowPassFilter {
     pub fn new(freq: f32, samples_per_second: u32) -> LowPassFilter {
         let len = (samples_per_second as f32 / freq).min(samples_per_second as f32).max(1.0);
-        LowPassFilter { samples: LoopBuffer::new(len.ceil() as usize, samples_per_second), delay: 1.0 / freq, len }
+        LowPassFilter {
+            samples: LoopBuffer::new(len.ceil() as usize, samples_per_second),
+            delay: 1.0 / freq,
+            len,
+        }
     }
 
     #[inline]
@@ -607,7 +614,9 @@ pub struct DelayLine {
 
 impl DelayLine {
     pub fn new(delay: usize, samples_per_second: u32) -> DelayLine {
-        DelayLine { samples: LoopBuffer::new(delay, samples_per_second) }
+        DelayLine {
+            samples: LoopBuffer::new(delay, samples_per_second)
+        }
     }
 
     pub fn pop(&mut self) -> f32 {
