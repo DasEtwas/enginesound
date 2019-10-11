@@ -28,15 +28,15 @@ pub const WAVEGUIDE_MAX_AMP: f32 = 20.0; // at this amplitude, a reciprocal damp
 
 #[derive(Serialize, Deserialize)]
 pub struct Muffler {
-    pub straight_pipe:    WaveGuide,
+    pub straight_pipe: WaveGuide,
     pub muffler_elements: Vec<WaveGuide>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct Engine {
-    pub rpm:                      f32,
-    pub intake_volume:            f32,
-    pub exhaust_volume:           f32,
+    pub rpm: f32,
+    pub intake_volume: f32,
+    pub exhaust_volume: f32,
     pub engine_vibrations_volume: f32,
 
     pub cylinders: Vec<Cylinder>,
@@ -109,9 +109,9 @@ pub struct Cylinder {
     /// waveguide from the other end of the exhaust WG to the exhaust collector
     pub extractor_waveguide: WaveGuide,
     // waveguide alpha values for when the valves are closed or opened
-    pub intake_open_refl:    f32,
-    pub intake_closed_refl:  f32,
-    pub exhaust_open_refl:   f32,
+    pub intake_open_refl: f32,
+    pub intake_closed_refl: f32,
+    pub exhaust_open_refl: f32,
     pub exhaust_closed_refl: f32,
 
     pub piston_motion_factor: f32,
@@ -437,7 +437,9 @@ impl WaveGuide {
         self.chamber1.samples.advance();
     }
 
-    pub fn update(&mut self, delay: usize, alpha: f32, beta: f32, samples_per_second: u32) -> Option<Self> {
+    #[allow(clippy::float_cmp)]
+    pub fn get_changed(&mut self, delay: usize, alpha: f32, beta: f32, samples_per_second: u32) -> Option<Self> {
+        // the strictly compared values will never change without user interaction (adjusting sliders)
         if delay != self.chamber0.samples.len || alpha != self.alpha || beta != self.beta {
             Some(Self::new(delay, alpha, beta, samples_per_second))
         } else {
@@ -464,12 +466,7 @@ impl LoopBuffer {
     /// The internal sample buffer size is rounded up to the currently best SIMD implementation's float vector size.
     pub fn new(len: usize, samples_per_second: u32) -> LoopBuffer {
         let bufsize = LoopBuffer::get_best_simd_size(len);
-        LoopBuffer {
-            delay: len as f32 / samples_per_second as f32,
-            len,
-            data: vec![0.0; bufsize],
-            pos: 0,
-        }
+        LoopBuffer { delay: len as f32 / samples_per_second as f32, len, data: vec![0.0; bufsize], pos: 0 }
     }
 
     /// Returns `(size / SIMD_REGISTER_SIZE).ceil() * SIMD_REGISTER_SIZE`, where `SIMD` may be the best simd implementation at runtime.
@@ -505,7 +502,7 @@ impl LoopBuffer {
     /// See `push` for examples
     pub fn pop(&mut self) -> f32 {
         let len = self.len;
-        self.data[(self.pos + 1) % len].clone()
+        self.data[(self.pos + 1) % len]
     }
 
     /// Advances the position of this loop buffer.
@@ -527,11 +524,7 @@ pub struct LowPassFilter {
 impl LowPassFilter {
     pub fn new(freq: f32, samples_per_second: u32) -> LowPassFilter {
         let len = (samples_per_second as f32 / freq).min(samples_per_second as f32).max(1.0);
-        LowPassFilter {
-            samples: LoopBuffer::new(len.ceil() as usize, samples_per_second),
-            delay: 1.0 / freq,
-            len,
-        }
+        LowPassFilter { samples: LoopBuffer::new(len.ceil() as usize, samples_per_second), delay: 1.0 / freq, len }
     }
 
     #[inline]
@@ -540,7 +533,7 @@ impl LowPassFilter {
     }
 
     pub fn filter(&mut self, sample: f32) -> f32 {
-        if self.len == f32::default() {
+        if self.len == 0.0 {
             self.len = self.samples.len as f32;
         }
 
@@ -596,9 +589,11 @@ impl LowPassFilter {
         }
     }
 
-    pub fn update(&mut self, freq: f32, samples_per_second: u32) -> Option<Self> {
+    #[allow(clippy::float_cmp)]
+    pub fn get_changed(&mut self, freq: f32, samples_per_second: u32) -> Option<Self> {
         let newfreq_len = (samples_per_second as f32 / freq).min(samples_per_second as f32).max(1.0);
 
+        // the strictly compared values will never change without user interaction (adjusting sliders)
         if newfreq_len != self.len {
             Some(Self::new(freq, samples_per_second))
         } else {
@@ -614,9 +609,7 @@ pub struct DelayLine {
 
 impl DelayLine {
     pub fn new(delay: usize, samples_per_second: u32) -> DelayLine {
-        DelayLine {
-            samples: LoopBuffer::new(delay, samples_per_second)
-        }
+        DelayLine { samples: LoopBuffer::new(delay, samples_per_second) }
     }
 
     pub fn pop(&mut self) -> f32 {

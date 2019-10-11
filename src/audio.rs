@@ -1,7 +1,9 @@
 use crate::gen::Generator;
 use parking_lot::RwLock;
-use sdl2::{self,
-           audio::{AudioCallback, AudioDevice, AudioSpecDesired}};
+use sdl2::{
+    self,
+    audio::{AudioCallback, AudioDevice, AudioSpecDesired},
+};
 use std::sync::Arc;
 
 pub const GENERATOR_BUFFER_SIZE: usize = 256;
@@ -18,17 +20,13 @@ pub fn init(gen: Arc<RwLock<Generator>>, sample_rate: u32) -> Result<Audio, Stri
     let sdl_context = sdl2::init()?;
     let audio_subsystem = sdl_context.audio()?;
 
-    let desired_spec = AudioSpecDesired {
-        freq: Some(sample_rate as i32), channels: Some(1), samples: Some(crate::SAMPLES_PER_CALLBACK as u16)
-    };
+    let desired_spec = AudioSpecDesired { freq: Some(sample_rate as i32), channels: Some(1), samples: Some(crate::SAMPLES_PER_CALLBACK as u16) };
 
     let (generator_sender, device_receiver) = crossbeam::channel::bounded(GENERATOR_CHANNEL_SIZE);
 
     let out_device = audio_subsystem.open_playback(None, &desired_spec, |spec| {
         if sample_rate == spec.freq as u32 {
-            StreamingPlayer {
-                samples_remainder: [0.0f32; GENERATOR_BUFFER_SIZE], samples_remainder_len: 0, audio_receiver: device_receiver
-            }
+            StreamingPlayer { samples_remainder: [0.0f32; GENERATOR_BUFFER_SIZE], samples_remainder_len: 0, audio_receiver: device_receiver }
         } else {
             panic!("Sample rate {} is not provided by the audio system", sample_rate);
         }
@@ -59,16 +57,14 @@ pub fn init(gen: Arc<RwLock<Generator>>, sample_rate: u32) -> Result<Audio, Stri
                     gen.write().generate(&mut buf);
                 }
 
-                if let Err(_) = generator_sender.send(buf) {
+                if generator_sender.send(buf).is_err() {
                     break;
                 }
             }
         }
     });
 
-    Ok(Audio {
-        player: out_device
-    })
+    Ok(Audio { player: out_device })
 }
 
 struct StreamingPlayer {

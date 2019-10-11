@@ -1,10 +1,14 @@
 use hound::{SampleFormat, WavSpec};
 use parking_lot::Mutex;
-use std::{fs::File,
-          io::BufWriter,
-          sync::{atomic::{AtomicBool, Ordering},
-                 Arc},
-          time::Duration};
+use std::{
+    fs::File,
+    io::BufWriter,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 pub struct Recorder {
     /// recorded samples since creation
@@ -18,9 +22,7 @@ impl Recorder {
     pub fn new(filename: String) -> Recorder {
         let (send, recv) = crossbeam::unbounded();
 
-        let ret = Recorder {
-            len: 0, sender: send, running: Arc::new(AtomicBool::new(true)), block_lock: Arc::new(Mutex::new(()))
-        };
+        let ret = Recorder { len: 0, sender: send, running: Arc::new(AtomicBool::new(true)), block_lock: Arc::new(Mutex::new(())) };
         ret.start(recv, filename);
         ret
     }
@@ -34,9 +36,7 @@ impl Recorder {
 
                 let mut wav_writer = match hound::WavWriter::new(
                     BufWriter::new(File::create(filename.as_str()).unwrap_or_else(|e| panic!("Failed to create/open a file for writing the WAV: {}", e))),
-                    WavSpec {
-                        channels: 1, sample_rate: crate::SAMPLE_RATE, bits_per_sample: 16, sample_format: SampleFormat::Int
-                    },
+                    WavSpec { channels: 1, sample_rate: crate::SAMPLE_RATE, bits_per_sample: 16, sample_format: SampleFormat::Int },
                 ) {
                     Ok(wav_writer) => wav_writer,
                     Err(e) => panic!("Failed to create a WavWriter: {}", e),
@@ -45,8 +45,8 @@ impl Recorder {
                 while running.load(Ordering::Relaxed) {
                     match recv.recv_timeout(Duration::from_secs(4)) {
                         Ok(samples) => {
-                            samples.iter().for_each(|sample| wav_writer.write_sample((sample.max(-1.0).min(1.0) * std::i16::MAX as f32) as i16).unwrap());
-                        },
+                            samples.iter().for_each(|sample| wav_writer.write_sample((sample.max(-1.0).min(1.0) * f32::from(std::i16::MAX)) as i16).unwrap());
+                        }
                         Err(_) => break,
                     }
                 }
@@ -54,7 +54,7 @@ impl Recorder {
                 println!("Stopped recording, finishing writing WAV..");
 
                 while let Ok(samples) = recv.try_recv() {
-                    samples.iter().for_each(|sample| wav_writer.write_sample((sample.max(-1.0).min(1.0) * std::i16::MAX as f32) as i16).unwrap());
+                    samples.iter().for_each(|sample| wav_writer.write_sample((sample.max(-1.0).min(1.0) * f32::from(std::i16::MAX)) as i16).unwrap());
                 }
 
                 wav_writer.flush().unwrap();
@@ -89,7 +89,7 @@ impl Recorder {
     pub fn stop_wait(&self) {
         self.running.store(false, Ordering::Relaxed);
 
-        while self.sender.len() > 0 {}
+        while !self.sender.is_empty() {}
 
         let _ = self.block_lock.lock();
     }

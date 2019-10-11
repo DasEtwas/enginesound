@@ -44,18 +44,16 @@ fn main() {
     let bytes;
     let mut engine: Engine = match ron::de::from_bytes({
         bytes = match matches.value_of("config") {
-            Some(path) => {
-                match File::open(path) {
-                    Ok(mut file) => {
-                        let mut bytes = Vec::new();
-                        file.read_to_end(&mut bytes).unwrap();
-                        println!("Loaded config file \"{}\"", path);
-                        bytes
-                    },
-                    Err(e) => {
-                        eprintln!("Failed to open config file \"{}\": {}", path, e);
-                        std::process::exit(1);
-                    },
+            Some(path) => match File::open(path) {
+                Ok(mut file) => {
+                    let mut bytes = Vec::new();
+                    file.read_to_end(&mut bytes).unwrap();
+                    println!("Loaded config file \"{}\"", path);
+                    bytes
+                }
+                Err(e) => {
+                    eprintln!("Failed to open config file \"{}\": {}", path, e);
+                    std::process::exit(1);
                 }
             },
             None => DEFAULT_CONFIG.to_vec(),
@@ -65,16 +63,15 @@ fn main() {
         Ok(engine) => {
             println!("Successfully loaded config");
             engine
-        },
+        }
         Err(e) => {
             eprintln!("Failed to parse config: {}", e);
             std::process::exit(2);
-        },
+        }
     };
 
-    match value_t!(matches.value_of("rpm"), f32) {
-        Ok(rpm) => engine.rpm = rpm.max(0.0),
-        Err(_) => (),
+    if let Ok(rpm) = value_t!(matches.value_of("rpm"), f32) {
+        engine.rpm = rpm.max(0.0);
     }
 
     let cli_mode = matches.is_present("headless");
@@ -147,7 +144,7 @@ fn main() {
             Err(e) => {
                 eprintln!("Failed to initialize SDL2 audio: {}", e);
                 std::process::exit(3);
-            },
+            }
         };
 
         // GUI
@@ -183,28 +180,20 @@ fn main() {
                         ui.handle_event(event);
                     }
 
-                    match event {
-                        glium::glutin::Event::WindowEvent {
-                            event, ..
-                        } => {
-                            match event {
-                                glium::glutin::WindowEvent::DroppedFile(path) => {
-                                    if let Some(new_engine) = crate::load_engine(path.to_str().unwrap_or("<invalid UTF-8>").to_owned()) {
-                                        generator.write().engine = new_engine;
-                                    }
-                                },
-                                glium::glutin::WindowEvent::CloseRequested
-                                | glium::glutin::WindowEvent::KeyboardInput {
-                                    input:
-                                        glium::glutin::KeyboardInput {
-                                            virtual_keycode: Some(glium::glutin::VirtualKeyCode::Escape), ..
-                                        },
-                                    ..
-                                } => break 'main,
-                                _ => (),
+                    if let glium::glutin::Event::WindowEvent { event, .. } = event {
+                        match event {
+                            glium::glutin::WindowEvent::DroppedFile(path) => {
+                                if let Some(new_engine) = crate::load_engine(path.to_str().unwrap_or("<invalid UTF-8>").to_owned()) {
+                                    generator.write().engine = new_engine;
+                                }
                             }
-                        },
-                        _ => (),
+                            glium::glutin::WindowEvent::CloseRequested
+                            | glium::glutin::WindowEvent::KeyboardInput {
+                                input: glium::glutin::KeyboardInput { virtual_keycode: Some(glium::glutin::VirtualKeyCode::Escape), .. },
+                                ..
+                            } => break 'main,
+                            _ => (),
+                        }
                     }
                 }
 
@@ -246,21 +235,19 @@ pub fn samples_to_distance(samples: usize) -> f32 {
 
 pub fn load_engine(path: String) -> Option<Engine> {
     match File::open(&path) {
-        Ok(file) => {
-            match ron::de::from_reader::<_, Engine>(file) {
-                Ok(engine) => {
-                    println!("Successfully loaded engine config \"{}\"", &path);
-                    Some(engine)
-                },
-                Err(e) => {
-                    eprintln!("Failed to load config \"{}\": {}", &path, e);
-                    None
-                },
+        Ok(file) => match ron::de::from_reader::<_, Engine>(file) {
+            Ok(engine) => {
+                println!("Successfully loaded engine config \"{}\"", &path);
+                Some(engine)
+            }
+            Err(e) => {
+                eprintln!("Failed to load config \"{}\": {}", &path, e);
+                None
             }
         },
         Err(e) => {
             eprintln!("Failed to load file \"{}\": {}", &path, e);
             None
-        },
+        }
     }
 }
