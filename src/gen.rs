@@ -5,7 +5,7 @@
 //! it's output worked upon and then new input samples are `push`ed.
 //!
 
-use crate::{recorder::Recorder, SAMPLES_PER_CALLBACK};
+use crate::recorder::Recorder;
 
 #[allow(unused_imports)]
 #[cfg(target_arch = "x86")]
@@ -72,7 +72,12 @@ impl Default for Noise {
     fn default() -> Self {
         Noise {
             inner: XorShiftRng::from_seed(unsafe {
-                std::mem::transmute::<u128, [u8; 16]>(SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos())
+                std::mem::transmute::<u128, [u8; 16]>(
+                    SystemTime::now()
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos(),
+                )
             }),
         }
     }
@@ -130,16 +135,25 @@ impl Cylinder {
     /// takes in the current exhaust collector pressure
     /// returns (intake, exhaust, piston + ignition, waveguide dampened)
     #[inline]
-    pub(in crate::gen) fn pop(&mut self, crank_pos: f32, exhaust_collector: f32, intake_valve_shift: f32, exhaust_valve_shift: f32) -> (f32, f32, f32, bool) {
+    pub(in crate::gen) fn pop(
+        &mut self,
+        crank_pos: f32,
+        exhaust_collector: f32,
+        intake_valve_shift: f32,
+        exhaust_valve_shift: f32,
+    ) -> (f32, f32, f32, bool) {
         let crank = (crank_pos + self.crank_offset).fract();
 
-        self.cyl_sound = piston_motion(crank) * self.piston_motion_factor + fuel_ignition(crank, self.ignition_time) * self.ignition_factor;
+        self.cyl_sound = piston_motion(crank) * self.piston_motion_factor
+            + fuel_ignition(crank, self.ignition_time) * self.ignition_factor;
 
         let ex_valve = exhaust_valve((crank + exhaust_valve_shift).fract());
         let in_valve = intake_valve((crank + intake_valve_shift).fract());
 
-        self.exhaust_waveguide.alpha = self.exhaust_closed_refl + (self.exhaust_open_refl - self.exhaust_closed_refl) * ex_valve;
-        self.intake_waveguide.alpha = self.intake_closed_refl + (self.intake_open_refl - self.intake_closed_refl) * in_valve;
+        self.exhaust_waveguide.alpha = self.exhaust_closed_refl
+            + (self.exhaust_open_refl - self.exhaust_closed_refl) * ex_valve;
+        self.intake_waveguide.alpha =
+            self.intake_closed_refl + (self.intake_open_refl - self.intake_closed_refl) * in_valve;
 
         // the first return value in the tuple is the cylinder-side valve-modulated side of the waveguide (alpha side)
         let ex_wg_ret = self.exhaust_waveguide.pop();
@@ -147,11 +161,17 @@ impl Cylinder {
 
         let extractor_wg_ret = self.extractor_waveguide.pop();
         self.extractor_exhaust = extractor_wg_ret.0;
-        self.extractor_waveguide.push(ex_wg_ret.1, exhaust_collector);
+        self.extractor_waveguide
+            .push(ex_wg_ret.1, exhaust_collector);
 
         //self.cyl_sound += ex_wg_ret.0 + in_wg_ret.0;
 
-        (in_wg_ret.1, extractor_wg_ret.1, self.cyl_sound, ex_wg_ret.2 | in_wg_ret.2 | extractor_wg_ret.2)
+        (
+            in_wg_ret.1,
+            extractor_wg_ret.1,
+            self.cyl_sound,
+            ex_wg_ret.2 | in_wg_ret.2 | extractor_wg_ret.2,
+        )
     }
 
     /// called after pop
@@ -165,7 +185,6 @@ impl Cylinder {
 
 pub struct Generator {
     pub recorder: Option<Recorder>,
-    pub gui_graph: Vec<f32>,
     pub volume: f32,
     pub samples_per_second: u32,
     pub engine: Engine,
@@ -181,7 +200,6 @@ impl Generator {
     pub(crate) fn new(samples_per_second: u32, engine: Engine, dc_lp: LowPassFilter) -> Generator {
         Generator {
             recorder: None,
-            gui_graph: vec![0.0; 2 * SAMPLES_PER_CALLBACK as usize],
             volume: 0.1_f32,
             samples_per_second,
             engine,
@@ -201,9 +219,12 @@ impl Generator {
         let mut i = 1.0;
         let mut ii = 0;
         while ii < buf.len() {
-            self.engine.crankshaft_pos = (crankshaft_pos + i * self.get_rpm() / samples_per_second).fract();
+            self.engine.crankshaft_pos =
+                (crankshaft_pos + i * self.get_rpm() / samples_per_second).fract();
             let samples = self.gen();
-            let sample = (samples.0 * self.get_intake_volume() + samples.1 * self.get_engine_vibrations_volume() + samples.2 * self.get_exhaust_volume())
+            let sample = (samples.0 * self.get_intake_volume()
+                + samples.1 * self.get_engine_vibrations_volume()
+                + samples.2 * self.get_exhaust_volume())
                 * self.get_volume();
             self.waveguides_dampened |= samples.3;
 
@@ -217,41 +238,114 @@ impl Generator {
         if let Some(recorder) = &mut self.recorder {
             let bufvec = buf.to_vec();
             let mut recording_currently_clipping = false;
-            bufvec.iter().for_each(|sample| recording_currently_clipping |= sample.abs() > 1.0);
+            bufvec
+                .iter()
+                .for_each(|sample| recording_currently_clipping |= sample.abs() > 1.0);
             self.recording_currently_clipping = recording_currently_clipping;
 
             recorder.record(bufvec);
         }
-
-        self.gui_graph.clear();
-        self.gui_graph.extend_from_slice(buf);
     }
 
     pub fn reset(&mut self) {
         for cyl in self.engine.cylinders.iter_mut() {
-            cyl.exhaust_waveguide.chamber0.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
-            cyl.exhaust_waveguide.chamber1.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
-            cyl.intake_waveguide.chamber0.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
-            cyl.intake_waveguide.chamber1.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
-            cyl.extractor_waveguide.chamber0.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
-            cyl.extractor_waveguide.chamber1.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
+            cyl.exhaust_waveguide
+                .chamber0
+                .samples
+                .data
+                .iter_mut()
+                .for_each(|sample| *sample = 0.0);
+            cyl.exhaust_waveguide
+                .chamber1
+                .samples
+                .data
+                .iter_mut()
+                .for_each(|sample| *sample = 0.0);
+            cyl.intake_waveguide
+                .chamber0
+                .samples
+                .data
+                .iter_mut()
+                .for_each(|sample| *sample = 0.0);
+            cyl.intake_waveguide
+                .chamber1
+                .samples
+                .data
+                .iter_mut()
+                .for_each(|sample| *sample = 0.0);
+            cyl.extractor_waveguide
+                .chamber0
+                .samples
+                .data
+                .iter_mut()
+                .for_each(|sample| *sample = 0.0);
+            cyl.extractor_waveguide
+                .chamber1
+                .samples
+                .data
+                .iter_mut()
+                .for_each(|sample| *sample = 0.0);
 
             cyl.extractor_exhaust = 0.0;
             cyl.cyl_sound = 0.0;
         }
 
-        self.engine.muffler.straight_pipe.chamber0.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
-        self.engine.muffler.straight_pipe.chamber1.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
+        self.engine
+            .muffler
+            .straight_pipe
+            .chamber0
+            .samples
+            .data
+            .iter_mut()
+            .for_each(|sample| *sample = 0.0);
+        self.engine
+            .muffler
+            .straight_pipe
+            .chamber1
+            .samples
+            .data
+            .iter_mut()
+            .for_each(|sample| *sample = 0.0);
 
-        self.engine.engine_vibration_filter.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
-        self.engine.engine_vibration_filter.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
+        self.engine
+            .engine_vibration_filter
+            .samples
+            .data
+            .iter_mut()
+            .for_each(|sample| *sample = 0.0);
+        self.engine
+            .engine_vibration_filter
+            .samples
+            .data
+            .iter_mut()
+            .for_each(|sample| *sample = 0.0);
 
-        self.engine.crankshaft_fluctuation_lp.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
-        self.engine.crankshaft_fluctuation_lp.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
+        self.engine
+            .crankshaft_fluctuation_lp
+            .samples
+            .data
+            .iter_mut()
+            .for_each(|sample| *sample = 0.0);
+        self.engine
+            .crankshaft_fluctuation_lp
+            .samples
+            .data
+            .iter_mut()
+            .for_each(|sample| *sample = 0.0);
 
         for muffler_element in self.engine.muffler.muffler_elements.iter_mut() {
-            muffler_element.chamber0.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
-            muffler_element.chamber1.samples.data.iter_mut().for_each(|sample| *sample = 0.0);
+            muffler_element
+                .chamber0
+                .samples
+                .data
+                .iter_mut()
+                .for_each(|sample| *sample = 0.0);
+            muffler_element
+                .chamber1
+                .samples
+                .data
+                .iter_mut()
+                .for_each(|sample| *sample = 0.0);
         }
 
         self.engine.exhaust_collector = 0.0;
@@ -311,7 +405,11 @@ impl Generator {
     /// generates one sample worth of data
     /// returns  `(intake, engine vibrations, exhaust, waveguides dampened)`
     fn gen(&mut self) -> (f32, f32, f32, bool) {
-        let intake_noise = self.engine.intake_noise_lp.filter(self.engine.intake_noise.step()) * self.engine.intake_noise_factor;
+        let intake_noise = self
+            .engine
+            .intake_noise_lp
+            .filter(self.engine.intake_noise.step())
+            * self.engine.intake_noise_factor;
 
         let mut engine_vibration = 0.0;
 
@@ -321,13 +419,17 @@ impl Generator {
         self.engine.exhaust_collector = 0.0;
         self.engine.intake_collector = 0.0;
 
-        let crankshaft_fluctuation_offset = self.engine.crankshaft_fluctuation_lp.filter(self.engine.crankshaft_noise.step());
+        let crankshaft_fluctuation_offset = self
+            .engine
+            .crankshaft_fluctuation_lp
+            .filter(self.engine.crankshaft_noise.step());
 
         let mut cylinder_dampened = false;
 
         for cylinder in self.engine.cylinders.iter_mut() {
             let (cyl_intake, cyl_exhaust, cyl_vib, dampened) = cylinder.pop(
-                self.engine.crankshaft_pos + self.engine.crankshaft_fluctuation * crankshaft_fluctuation_offset,
+                self.engine.crankshaft_pos
+                    + self.engine.crankshaft_fluctuation * crankshaft_fluctuation_offset,
                 last_exhaust_collector,
                 self.engine.intake_valve_shift,
                 self.engine.exhaust_valve_shift,
@@ -360,10 +462,19 @@ impl Generator {
 
         for cylinder in self.engine.cylinders.iter_mut() {
             // modulate intake
-            cylinder.push(self.engine.intake_collector / num_cyl + intake_noise * intake_valve((self.engine.crankshaft_pos + cylinder.crank_offset).fract()));
+            cylinder.push(
+                self.engine.intake_collector / num_cyl
+                    + intake_noise
+                        * intake_valve(
+                            (self.engine.crankshaft_pos + cylinder.crank_offset).fract(),
+                        ),
+            );
         }
 
-        self.engine.muffler.straight_pipe.push(self.engine.exhaust_collector, muffler_wg_ret.0);
+        self.engine
+            .muffler
+            .straight_pipe
+            .push(self.engine.exhaust_collector, muffler_wg_ret.0);
 
         self.engine.exhaust_collector += straight_pipe_wg_ret.0;
 
@@ -375,7 +486,12 @@ impl Generator {
 
         engine_vibration = self.engine.engine_vibration_filter.filter(engine_vibration);
 
-        (self.engine.intake_collector, engine_vibration, muffler_wg_ret.1, straight_pipe_wg_ret.2 | cylinder_dampened)
+        (
+            self.engine.intake_collector,
+            engine_vibration,
+            muffler_wg_ret.1,
+            straight_pipe_wg_ret.2 | cylinder_dampened,
+        )
     }
 }
 
@@ -415,13 +531,21 @@ impl WaveGuide {
         self.c1_out = c1_out;
         self.c0_out = c0_out;
 
-        (self.c1_out * (1.0 - self.alpha.abs()), self.c0_out * (1.0 - self.beta.abs()), dampened_c1 | dampened_c0)
+        (
+            self.c1_out * (1.0 - self.alpha.abs()),
+            self.c0_out * (1.0 - self.beta.abs()),
+            dampened_c1 | dampened_c0,
+        )
     }
     #[inline]
     pub fn dampen(sample: f32) -> (f32, bool) {
         let sample_abs = sample.abs();
         if sample_abs > WAVEGUIDE_MAX_AMP {
-            (sample.signum() * (-1.0 / (sample_abs - WAVEGUIDE_MAX_AMP + 1.0) + 1.0 + WAVEGUIDE_MAX_AMP), true)
+            (
+                sample.signum()
+                    * (-1.0 / (sample_abs - WAVEGUIDE_MAX_AMP + 1.0) + 1.0 + WAVEGUIDE_MAX_AMP),
+                true,
+            )
         } else {
             (sample, false)
         }
@@ -438,7 +562,13 @@ impl WaveGuide {
     }
 
     #[allow(clippy::float_cmp)]
-    pub fn get_changed(&mut self, delay: usize, alpha: f32, beta: f32, samples_per_second: u32) -> Option<Self> {
+    pub fn get_changed(
+        &mut self,
+        delay: usize,
+        alpha: f32,
+        beta: f32,
+        samples_per_second: u32,
+    ) -> Option<Self> {
         // the strictly compared values will never change without user interaction (adjusting sliders)
         if delay != self.chamber0.samples.len || alpha != self.alpha || beta != self.beta {
             Some(Self::new(delay, alpha, beta, samples_per_second))
@@ -466,7 +596,12 @@ impl LoopBuffer {
     /// The internal sample buffer size is rounded up to the currently best SIMD implementation's float vector size.
     pub fn new(len: usize, samples_per_second: u32) -> LoopBuffer {
         let bufsize = LoopBuffer::get_best_simd_size(len);
-        LoopBuffer { delay: len as f32 / samples_per_second as f32, len, data: vec![0.0; bufsize], pos: 0 }
+        LoopBuffer {
+            delay: len as f32 / samples_per_second as f32,
+            len,
+            data: vec![0.0; bufsize],
+            pos: 0,
+        }
     }
 
     /// Returns `(size / SIMD_REGISTER_SIZE).ceil() * SIMD_REGISTER_SIZE`, where `SIMD` may be the best simd implementation at runtime.
@@ -523,8 +658,14 @@ pub struct LowPassFilter {
 
 impl LowPassFilter {
     pub fn new(freq: f32, samples_per_second: u32) -> LowPassFilter {
-        let len = (samples_per_second as f32 / freq).min(samples_per_second as f32).max(1.0);
-        LowPassFilter { samples: LoopBuffer::new(len.ceil() as usize, samples_per_second), delay: 1.0 / freq, len }
+        let len = (samples_per_second as f32 / freq)
+            .min(samples_per_second as f32)
+            .max(1.0);
+        LowPassFilter {
+            samples: LoopBuffer::new(len.ceil() as usize, samples_per_second),
+            delay: 1.0 / freq,
+            len,
+        }
     }
 
     #[inline]
@@ -544,7 +685,11 @@ impl LowPassFilter {
         unsafe fn sum<S: Simd>(samples: &[f32], flen: f32) -> f32 {
             let mut i = S::VF32_WIDTH;
             let len = samples.len();
-            assert_eq!(len % S::VF32_WIDTH, 0, "LoopBuffer length is not a multiple of the SIMD vector size");
+            assert_eq!(
+                len % S::VF32_WIDTH,
+                0,
+                "LoopBuffer length is not a multiple of the SIMD vector size"
+            );
 
             // rolling sum
             let mut rolling_sum = S::loadu_ps(&samples[0]);
@@ -591,7 +736,9 @@ impl LowPassFilter {
 
     #[allow(clippy::float_cmp)]
     pub fn get_changed(&mut self, freq: f32, samples_per_second: u32) -> Option<Self> {
-        let newfreq_len = (samples_per_second as f32 / freq).min(samples_per_second as f32).max(1.0);
+        let newfreq_len = (samples_per_second as f32 / freq)
+            .min(samples_per_second as f32)
+            .max(1.0);
 
         // the strictly compared values will never change without user interaction (adjusting sliders)
         if newfreq_len != self.len {
@@ -609,7 +756,9 @@ pub struct DelayLine {
 
 impl DelayLine {
     pub fn new(delay: usize, samples_per_second: u32) -> DelayLine {
-        DelayLine { samples: LoopBuffer::new(delay, samples_per_second) }
+        DelayLine {
+            samples: LoopBuffer::new(delay, samples_per_second),
+        }
     }
 
     pub fn pop(&mut self) -> f32 {

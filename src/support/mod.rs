@@ -3,6 +3,12 @@ use std;
 
 pub struct GliumDisplayWinitWrapper(pub glium::Display);
 
+impl GliumDisplayWinitWrapper {
+    pub fn get(&self) -> &glium::Display {
+        &self.0
+    }
+}
+
 impl conrod_winit::WinitWindow for GliumDisplayWinitWrapper {
     fn get_inner_size(&self) -> Option<(u32, u32)> {
         self.0.gl_window().get_inner_size().map(Into::into)
@@ -20,18 +26,22 @@ impl conrod_winit::WinitWindow for GliumDisplayWinitWrapper {
 /// glutin+glium event loop that works efficiently with conrod.
 pub struct EventLoop {
     ui_needs_update: bool,
-    last_update:     std::time::Instant,
+    last_update: std::time::Instant,
 }
 
 impl EventLoop {
     pub fn new() -> Self {
         EventLoop {
-            last_update: std::time::Instant::now(), ui_needs_update: true
+            last_update: std::time::Instant::now(),
+            ui_needs_update: true,
         }
     }
 
     /// Produce an iterator yielding all available events.
-    pub fn next(&mut self, events_loop: &mut glium::glutin::EventsLoop) -> Vec<glium::glutin::Event> {
+    pub fn next(
+        &mut self,
+        events_loop: &mut glium::glutin::EventsLoop,
+    ) -> Vec<glium::glutin::Event> {
         // We don't want to loop any faster than 60 FPS, so wait until it has been at least 16ms
         // since the last yield.
         let last_update = self.last_update;

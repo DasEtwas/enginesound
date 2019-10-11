@@ -1,11 +1,11 @@
 [package]
 name = "enginesound"
-version = "1.1.1"
+version = "1.2.0"
 authors = ["https://github.com/DasEtwas/"]
 edition = "2018"
 description = """
 GUI Application used to generate purely synthetic engine sounds with advanced options in real-time, written in Rust.
-It features real-time recording of the engine, a CLI interface, automatic crossfading to create seamless loops in the CLI and preset saving/loading capabilities.
+It features real-time recording of the engine, a CLI, automatic crossfading to create seamless loops in the CLI, realtime frequency domain display through FFT, and preset saving/loading capabilities.
 """
 
 [dependencies]
@@ -26,6 +26,10 @@ glium = "0.23.0"
 conrod_core = "0.63.0"
 conrod_glium = "0.63.0"
 conrod_winit = "0.63.0"
+
+# fft #
+num-traits = "0.2.8"
+num-complex = "0.2.3"
 
 # sound #
 rand_core = "0.4.0"

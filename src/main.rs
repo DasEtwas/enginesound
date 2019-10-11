@@ -3,10 +3,14 @@ use parking_lot::RwLock;
 
 mod audio;
 mod deser;
+mod fft;
 mod gen;
 mod gui;
 mod recorder;
 
+use crate::audio::{ExactStreamer, GENERATOR_BUFFER_SIZE};
+use crate::fft::FFTStreamer;
+use crate::gui::{GUIState, WATERFALL_WIDTH};
 use crate::recorder::Recorder;
 use clap::{value_t, App, Arg};
 use conrod_core::text::Font;
@@ -77,12 +81,18 @@ fn main() {
     let cli_mode = matches.is_present("headless");
 
     // sound generator
-    let mut generator = gen::Generator::new(SAMPLE_RATE, engine, LowPassFilter::new(DC_OFFSET_LP_FREQ, SAMPLE_RATE));
+    let mut generator = gen::Generator::new(
+        SAMPLE_RATE,
+        engine,
+        LowPassFilter::new(DC_OFFSET_LP_FREQ, SAMPLE_RATE),
+    );
 
     generator.volume = value_t!(matches.value_of("volume"), f32).unwrap();
 
     if cli_mode {
-        let warmup_time = value_t!(matches.value_of("warmup_time"), f32).unwrap().max(0.0); // has default value
+        let warmup_time = value_t!(matches.value_of("warmup_time"), f32)
+            .unwrap()
+            .max(0.0); // has default value
         let record_time = value_t!(matches.value_of("reclen"), f32).unwrap().max(0.0); // has default value
         let output_filename = matches.value_of("output_file").unwrap(); // has default value
 
@@ -100,7 +110,8 @@ fn main() {
 
         if matches.occurrences_of("crossfade") != 0 {
             let crossfade_duration = value_t!(matches.value_of("crossfade"), f32).unwrap();
-            let crossfade_size = seconds_to_samples(crossfade_duration.max(1.0 / SAMPLE_RATE as f32));
+            let crossfade_size =
+                seconds_to_samples(crossfade_duration.max(1.0 / SAMPLE_RATE as f32));
 
             if crossfade_size >= output.len() {
                 println!("Crossfade duration is too long {}", crossfade_duration);
@@ -114,7 +125,10 @@ fn main() {
 
             let mut shifted = output.clone();
 
-            shifted.iter_mut().enumerate().for_each(|(i, x)| *x = output[(half_len + i) % len]);
+            shifted
+                .iter_mut()
+                .enumerate()
+                .for_each(|(i, x)| *x = output[(half_len + i) % len]);
 
             output = Vec::with_capacity(shifted.len() - crossfade_size / 2);
             output.extend_from_slice(&shifted[..half_len]);
@@ -139,13 +153,27 @@ fn main() {
     } else {
         let generator = Arc::new(RwLock::new(generator));
 
-        let audio = match audio::init(generator.clone(), SAMPLE_RATE) {
+        let (audio, fft_receiver) = match audio::init(generator.clone(), SAMPLE_RATE) {
             Ok(audio) => audio,
             Err(e) => {
                 eprintln!("Failed to initialize SDL2 audio: {}", e);
                 std::process::exit(3);
             }
         };
+
+        // this channel is bounded in practice by the channel between the following ExactStreamer of the FFTStreamer and it's channel's capacity (created in crate::audio::init)
+        let (fft_sender, gui_fft_receiver) = crossbeam::channel::bounded(4);
+
+        let mut fft = FFTStreamer::new(
+            WATERFALL_WIDTH as usize,
+            ExactStreamer::new(GENERATOR_BUFFER_SIZE, fft_receiver),
+            fft_sender,
+        );
+
+        // spawns thread for fft to create the waterfall lines
+        std::thread::spawn(move || {
+            fft.run();
+        });
 
         // GUI
         {
@@ -157,20 +185,26 @@ fn main() {
                 .with_max_dimensions((WINDOW_WIDTH + 1.0, WINDOW_HEIGHT + 1000.0).into())
                 .with_min_dimensions((WINDOW_WIDTH, WINDOW_HEIGHT).into())
                 .with_resizable(true);
-            let context = glium::glutin::ContextBuilder::new().with_vsync(true).with_multisampling(4);
+            let context = glium::glutin::ContextBuilder::new()
+                .with_vsync(true)
+                .with_multisampling(4);
             let display = glium::Display::new(window, context, &events_loop).unwrap();
-
-            let mut image_map = conrod_core::image::Map::<glium::texture::Texture2d>::new();
-            image_map.insert(gui::generate_waterfall_texture(&display));
 
             let display = support::GliumDisplayWinitWrapper(display);
 
-            let mut ui = conrod_core::UiBuilder::new([WINDOW_WIDTH, WINDOW_HEIGHT]).theme(gui::theme()).build();
+            let mut ui = conrod_core::UiBuilder::new([WINDOW_WIDTH, WINDOW_HEIGHT])
+                .theme(gui::theme())
+                .build();
             let ids = gui::Ids::new(ui.widget_id_generator());
 
-            ui.fonts.insert(Font::from_bytes(&include_bytes!("../fonts/NotoSans/NotoSans-Regular.ttf")[..]).unwrap());
+            ui.fonts.insert(
+                Font::from_bytes(&include_bytes!("../fonts/NotoSans/NotoSans-Regular.ttf")[..])
+                    .unwrap(),
+            );
 
-            let mut renderer = conrod_glium::Renderer::new(&display.0).unwrap();
+            let mut gui_state = GUIState::new(gui_fft_receiver);
+
+            let mut renderer = conrod_glium::Renderer::new(display.get()).unwrap();
 
             let mut event_loop = support::EventLoop::new();
             'main: loop {
@@ -183,13 +217,19 @@ fn main() {
                     if let glium::glutin::Event::WindowEvent { event, .. } = event {
                         match event {
                             glium::glutin::WindowEvent::DroppedFile(path) => {
-                                if let Some(new_engine) = crate::load_engine(path.to_str().unwrap_or("<invalid UTF-8>").to_owned()) {
+                                if let Some(new_engine) = crate::load_engine(
+                                    path.to_str().unwrap_or("<invalid UTF-8>").to_owned(),
+                                ) {
                                     generator.write().engine = new_engine;
                                 }
                             }
                             glium::glutin::WindowEvent::CloseRequested
                             | glium::glutin::WindowEvent::KeyboardInput {
-                                input: glium::glutin::KeyboardInput { virtual_keycode: Some(glium::glutin::VirtualKeyCode::Escape), .. },
+                                input:
+                                    glium::glutin::KeyboardInput {
+                                        virtual_keycode: Some(glium::glutin::VirtualKeyCode::Escape),
+                                        ..
+                                    },
                                 ..
                             } => break 'main,
                             _ => (),
@@ -197,15 +237,21 @@ fn main() {
                     }
                 }
 
-                gui::gui(&mut ui.set_widgets(), &ids, generator.clone());
+                let image_map = gui::gui(
+                    &mut ui.set_widgets(),
+                    &ids,
+                    generator.clone(),
+                    &mut gui_state,
+                    display.get(),
+                );
 
-                if let Some(primitives) = ui.draw_if_changed() {
-                    renderer.fill(&display.0, primitives, &image_map);
-                    let mut target = display.0.draw();
-                    target.clear_color(0.0, 0.0, 0.0, 1.0);
-                    renderer.draw(&display.0, &mut target, &image_map).unwrap();
-                    target.finish().unwrap();
-                }
+                let primitives = ui.draw();
+
+                renderer.fill(&display.0, primitives, &image_map);
+                let mut target = display.0.draw();
+                target.clear_color(0.0, 0.0, 0.0, 1.0);
+                renderer.draw(&display.0, &mut target, &image_map).unwrap();
+                target.finish().unwrap();
             }
         }
 

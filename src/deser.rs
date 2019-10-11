@@ -1,5 +1,7 @@
-use crate::{gen::{LoopBuffer, LowPassFilter},
-            SAMPLE_RATE};
+use crate::{
+    gen::{LoopBuffer, LowPassFilter},
+    SAMPLE_RATE,
+};
 use serde::*;
 
 #[derive(Deserialize)]
@@ -30,7 +32,9 @@ pub struct LowPassFilterDeser {
 
 impl From<LowPassFilterDeser> for LowPassFilter {
     fn from(from: LowPassFilterDeser) -> Self {
-        let len = (from.delay * SAMPLE_RATE as f32).min(SAMPLE_RATE as f32).max(1.0);
+        let len = (from.delay * SAMPLE_RATE as f32)
+            .min(SAMPLE_RATE as f32)
+            .max(1.0);
         LowPassFilter {
             samples: LoopBuffer::new(len.ceil() as usize, SAMPLE_RATE),
             delay: from.delay,
