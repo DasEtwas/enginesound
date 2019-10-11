@@ -11,7 +11,7 @@ use parking_lot::RwLock;
 use std::{fs::File, io::Write, sync::Arc};
 
 // must be 2^n
-pub const WATERFALL_WIDTH: u32 = 512;
+pub const WATERFALL_WIDTH: u32 = 256;
 pub const WATERFALL_HEIGHT: u32 = 100;
 
 /// A set of reasonable stylistic defaults that works for the `gui` below.
@@ -157,13 +157,7 @@ impl GUIState {
 
     fn update(&mut self) {
         if let Ok(new_line) = self.input.try_recv() {
-            self.add_line(new_line.as_slice());
-        } else {
-            self.add_line(
-                self.waterfall[..WATERFALL_WIDTH as usize]
-                    .to_vec()
-                    .as_slice(),
-            );
+            self.add_line(&new_line[..WATERFALL_WIDTH as usize]);
         }
     }
 
@@ -211,31 +205,44 @@ pub fn gui(
         .w(20.0)
         .set(ids.canvas_scrollbar, ui);
 
-    gui_state.update();
+    let image_map = {
+        // receives (maybe) new FFT data
+        gui_state.update();
 
-    let raw_image = glium::texture::RawImage2d::from_raw_rgb_reversed(
-        gui_state
-            .waterfall
-            .iter()
-            .flat_map(|float| {
-                let bytified = (float.min(1.0).max(0.0) * 255.0) as u8;
-                vec![bytified, bytified, bytified].into_iter()
-            })
-            .collect::<Vec<_>>()
-            .as_slice(),
-        (WATERFALL_WIDTH, WATERFALL_HEIGHT),
-    );
+        let raw_image = glium::texture::RawImage2d::from_raw_rgb_reversed(
+            gui_state
+                .waterfall
+                .iter()
+                .enumerate()
+                .flat_map(|(i, float)| {
+                    let bytified = ((float
+                        * (0.5
+                            + (i % WATERFALL_WIDTH as usize) as f32 / WATERFALL_WIDTH as f32
+                                * 4.0))
+                        .min(1.0)
+                        .max(0.0)
+                        .powi(2)
+                        * 255.0) as u8;
+                    vec![bytified, bytified, bytified].into_iter()
+                })
+                .collect::<Vec<_>>()
+                .as_slice(),
+            (WATERFALL_WIDTH, WATERFALL_HEIGHT),
+        );
 
-    let mut image_map = conrod_core::image::Map::<glium::texture::Texture2d>::new();
-    let waterfall_image_id =
-        image_map.insert(glium::texture::Texture2d::new(display, raw_image).unwrap());
+        let mut image_map = conrod_core::image::Map::<glium::texture::Texture2d>::new();
+        let waterfall_image_id =
+            image_map.insert(glium::texture::Texture2d::new(display, raw_image).unwrap());
 
-    widget::Image::new(waterfall_image_id)
-        .mid_top_with_margin(TOP_MARGIN)
-        .mid_left_of(ids.canvas)
-        .w(BUTTON_WIDTH)
-        .h(WATERFALL_HEIGHT as f64)
-        .set(ids.waterfall, ui);
+        widget::Image::new(waterfall_image_id)
+            .mid_top_with_margin(TOP_MARGIN)
+            .mid_left_of(ids.canvas)
+            .w(BUTTON_WIDTH)
+            .h(WATERFALL_HEIGHT as f64)
+            .set(ids.waterfall, ui);
+
+        image_map
+    };
 
     {
         let mut generator = generator.write();

@@ -165,7 +165,7 @@ fn main() {
         let (fft_sender, gui_fft_receiver) = crossbeam::channel::bounded(4);
 
         let mut fft = FFTStreamer::new(
-            WATERFALL_WIDTH as usize,
+            WATERFALL_WIDTH as usize * 2, /* only half of the spectrum can be used */
             ExactStreamer::new(GENERATOR_BUFFER_SIZE, fft_receiver),
             fft_sender,
         );

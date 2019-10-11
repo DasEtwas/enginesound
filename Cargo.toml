@@ -30,6 +30,7 @@ conrod_winit = "0.63.0"
 # fft #
 num-traits = "0.2.8"
 num-complex = "0.2.3"
+rustfft = "3.0.0"
 
 # sound #
 rand_core = "0.4.0"
