@@ -7,7 +7,8 @@ Cargo.lock
 enginesound.iml
 out.wav
 SDL2.dll
-/win_sdl_libs
+win_sdl_libs
+!win_sdl_libs/fix_windows_sdl.bat
 **/*.wav
 **/*.zip
 **/*.es
