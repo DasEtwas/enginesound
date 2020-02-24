@@ -55,6 +55,12 @@ few files to the default toolchain.
 ## Preview ##
 ### CLI ###
 ```
+Engine Sound Generator 1.3.0
+https://github.com/DasEtwas/
+GUI Application used to generate purely synthetic engine sounds with advanced options in real-time, written in Rust.
+It features real-time recording of the engine, a CLI, automatic crossfading to create seamless loops in the CLI,
+realtime frequency domain display through FFT, and preset saving/loading capabilities.
+
 USAGE:
     enginesound [FLAGS] [OPTIONS]
 
@@ -70,8 +76,13 @@ OPTIONS:
                                        sets the size of the crossfade, where the final output is decreased in length by
                                        crossfade_time/2.
     -o, --output <output_file>         Sets the output .wav file path
-    -l, --length <reclen>              Sets the time to record in seconds
+    -l, --length <reclen>              Sets the time to record in seconds. The formula for the recommended time to
+                                       record to get a seamless loop is as follows:
+                                       let wavelength = 120.0 / rpm;
+                                       let crossfade = wavelength * 2.0;
+                                       let reclen = audio_length + crossfade / 2.0;
     -r, --rpm <rpm>                    Engine RPM
+    -q, --samplerate <samplerate>      Generator sample rate [default: 48000]
     -v, --volume <volume>              Sets the master volume [default: 0.1]
     -w, --warmup_time <warmup_time>    Sets the time to wait in seconds before recording
 ```
