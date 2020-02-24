@@ -1,0 +1,479 @@
+(
+    rpm: 1459.5205,
+    intake_volume: 0.37113348,
+    exhaust_volume: 0.59019476,
+    engine_vibrations_volume: 0.03867178,
+    cylinders: [
+        (
+            crank_offset: 0,
+            exhaust_waveguide: (
+                chamber0: (
+                    samples: (delay:0.00025,),
+                ),
+                chamber1: (
+                    samples: (delay:0.00025,),
+                ),
+                alpha: 0.96289444,
+                beta: 0.06,
+            ),
+            intake_waveguide: (
+                chamber0: (
+                    samples: (delay:0.0021666666,),
+                ),
+                chamber1: (
+                    samples: (delay:0.0021666666,),
+                ),
+                alpha: 0.80410254,
+                beta: -0.30482465,
+            ),
+            extractor_waveguide: (
+                chamber0: (
+                    samples: (delay:0.0005833333,),
+                ),
+                chamber1: (
+                    samples: (delay:0.0005833333,),
+                ),
+                alpha: 0,
+                beta: 0.016535282,
+            ),
+            intake_open_refl: 0.012284279,
+            intake_closed_refl: 0.80410254,
+            exhaust_open_refl: -0.011291921,
+            exhaust_closed_refl: 0.96289444,
+            piston_motion_factor: 3.9472303,
+            ignition_factor: 1.4436756,
+            ignition_time: 0.08337656,
+        ),// [0]
+        (
+            crank_offset: 0.101298705,
+            exhaust_waveguide: (
+                chamber0: (
+                    samples: (delay:0.00041666668,),
+                ),
+                chamber1: (
+                    samples: (delay:0.00041666668,),
+                ),
+                alpha: 0.96289444,
+                beta: 0.06,
+            ),
+            intake_waveguide: (
+                chamber0: (
+                    samples: (delay:0.00039583334,),
+                ),
+                chamber1: (
+                    samples: (delay:0.00039583334,),
+                ),
+                alpha: 0.07846612,
+                beta: -0.30482465,
+            ),
+            extractor_waveguide: (
+                chamber0: (
+                    samples: (delay:0.001875,),
+                ),
+                chamber1: (
+                    samples: (delay:0.001875,),
+                ),
+                alpha: 0,
+                beta: 0.016535282,
+            ),
+            intake_open_refl: 0.012284279,
+            intake_closed_refl: 0.80410254,
+            exhaust_open_refl: -0.011291921,
+            exhaust_closed_refl: 0.96289444,
+            piston_motion_factor: 3.9472303,
+            ignition_factor: 1.4436756,
+            ignition_time: 0.08337656,
+        ),// [1]
+        (
+            crank_offset: 0.20779221,
+            exhaust_waveguide: (
+                chamber0: (
+                    samples: (delay:0.00045833332,),
+                ),
+                chamber1: (
+                    samples: (delay:0.00045833332,),
+                ),
+                alpha: 0.96289444,
+                beta: 0.06,
+            ),
+            intake_waveguide: (
+                chamber0: (
+                    samples: (delay:0.0003125,),
+                ),
+                chamber1: (
+                    samples: (delay:0.0003125,),
+                ),
+                alpha: 0.3284932,
+                beta: -0.30482465,
+            ),
+            extractor_waveguide: (
+                chamber0: (
+                    samples: (delay:0.0005625,),
+                ),
+                chamber1: (
+                    samples: (delay:0.0005625,),
+                ),
+                alpha: 0,
+                beta: 0.016535282,
+            ),
+            intake_open_refl: 0.012284279,
+            intake_closed_refl: 0.80410254,
+            exhaust_open_refl: -0.011291921,
+            exhaust_closed_refl: 0.96289444,
+            piston_motion_factor: 3.9472303,
+            ignition_factor: 1.4436756,
+            ignition_time: 0.08337656,
+        ),// [2]
+        (
+            crank_offset: 0.3012987,
+            exhaust_waveguide: (
+                chamber0: (
+                    samples: (delay:0.00035416667,),
+                ),
+                chamber1: (
+                    samples: (delay:0.00035416667,),
+                ),
+                alpha: 0.96289444,
+                beta: 0.06,
+            ),
+            intake_waveguide: (
+                chamber0: (
+                    samples: (delay:0.00020833334,),
+                ),
+                chamber1: (
+                    samples: (delay:0.00020833334,),
+                ),
+                alpha: 0.80410254,
+                beta: -0.30482465,
+            ),
+            extractor_waveguide: (
+                chamber0: (
+                    samples: (delay:0.0011666666,),
+                ),
+                chamber1: (
+                    samples: (delay:0.0011666666,),
+                ),
+                alpha: 0,
+                beta: 0.016535282,
+            ),
+            intake_open_refl: 0.012284279,
+            intake_closed_refl: 0.80410254,
+            exhaust_open_refl: -0.011291921,
+            exhaust_closed_refl: 0.96289444,
+            piston_motion_factor: 3.9472303,
+            ignition_factor: 1.4436756,
+            ignition_time: 0.08337656,
+        ),// [3]
+        (
+            crank_offset: 0.4064935,
+            exhaust_waveguide: (
+                chamber0: (
+                    samples: (delay:0.00025,),
+                ),
+                chamber1: (
+                    samples: (delay:0.00025,),
+                ),
+                alpha: 0.96289444,
+                beta: 0.06,
+            ),
+            intake_waveguide: (
+                chamber0: (
+                    samples: (delay:0.0003125,),
+                ),
+                chamber1: (
+                    samples: (delay:0.0003125,),
+                ),
+                alpha: 0.80410254,
+                beta: -0.30482465,
+            ),
+            extractor_waveguide: (
+                chamber0: (
+                    samples: (delay:0.0008541667,),
+                ),
+                chamber1: (
+                    samples: (delay:0.0008541667,),
+                ),
+                alpha: 0,
+                beta: 0.016535282,
+            ),
+            intake_open_refl: 0.012284279,
+            intake_closed_refl: 0.80410254,
+            exhaust_open_refl: -0.011291921,
+            exhaust_closed_refl: 0.96289444,
+            piston_motion_factor: 3.9472303,
+            ignition_factor: 1.4436756,
+            ignition_time: 0.08337656,
+        ),// [4]
+        (
+            crank_offset: 0.5051948,
+            exhaust_waveguide: (
+                chamber0: (
+                    samples: (delay:0.00035416667,),
+                ),
+                chamber1: (
+                    samples: (delay:0.00035416667,),
+                ),
+                alpha: 0.96289444,
+                beta: 0.06,
+            ),
+            intake_waveguide: (
+                chamber0: (
+                    samples: (delay:0.0003125,),
+                ),
+                chamber1: (
+                    samples: (delay:0.0003125,),
+                ),
+                alpha: 0.80410254,
+                beta: -0.30482465,
+            ),
+            extractor_waveguide: (
+                chamber0: (
+                    samples: (delay:0.0013125,),
+                ),
+                chamber1: (
+                    samples: (delay:0.0013125,),
+                ),
+                alpha: 0,
+                beta: 0.016535282,
+            ),
+            intake_open_refl: 0.012284279,
+            intake_closed_refl: 0.80410254,
+            exhaust_open_refl: -0.011291921,
+            exhaust_closed_refl: 0.96289444,
+            piston_motion_factor: 3.9472303,
+            ignition_factor: 1.4436756,
+            ignition_time: 0.08337656,
+        ),// [5]
+        (
+            crank_offset: 0.5987013,
+            exhaust_waveguide: (
+                chamber0: (
+                    samples: (delay:0.00033333333,),
+                ),
+                chamber1: (
+                    samples: (delay:0.00033333333,),
+                ),
+                alpha: 0.91563976,
+                beta: 0.06,
+            ),
+            intake_waveguide: (
+                chamber0: (
+                    samples: (delay:0.00035416667,),
+                ),
+                chamber1: (
+                    samples: (delay:0.00035416667,),
+                ),
+                alpha: 0.80410254,
+                beta: -0.30482465,
+            ),
+            extractor_waveguide: (
+                chamber0: (
+                    samples: (delay:0.0005625,),
+                ),
+                chamber1: (
+                    samples: (delay:0.0005625,),
+                ),
+                alpha: 0,
+                beta: 0.016535282,
+            ),
+            intake_open_refl: 0.012284279,
+            intake_closed_refl: 0.80410254,
+            exhaust_open_refl: -0.011291921,
+            exhaust_closed_refl: 0.96289444,
+            piston_motion_factor: 3.9472303,
+            ignition_factor: 1.4436756,
+            ignition_time: 0.08337656,
+        ),// [6]
+        (
+            crank_offset: 0.7,
+            exhaust_waveguide: (
+                chamber0: (
+                    samples: (delay:0.00045833332,),
+                ),
+                chamber1: (
+                    samples: (delay:0.00045833332,),
+                ),
+                alpha: 0.018827498,
+                beta: 0.06,
+            ),
+            intake_waveguide: (
+                chamber0: (
+                    samples: (delay:0.0005,),
+                ),
+                chamber1: (
+                    samples: (delay:0.0005,),
+                ),
+                alpha: 0.80410254,
+                beta: -0.30482465,
+            ),
+            extractor_waveguide: (
+                chamber0: (
+                    samples: (delay:0.0014583333,),
+                ),
+                chamber1: (
+                    samples: (delay:0.0014583333,),
+                ),
+                alpha: 0,
+                beta: 0.016535282,
+            ),
+            intake_open_refl: 0.012284279,
+            intake_closed_refl: 0.80410254,
+            exhaust_open_refl: -0.011291921,
+            exhaust_closed_refl: 0.96289444,
+            piston_motion_factor: 3.9472303,
+            ignition_factor: 1.4436756,
+            ignition_time: 0.08337656,
+        ),// [7]
+        (
+            crank_offset: 0.8,
+            exhaust_waveguide: (
+                chamber0: (
+                    samples: (delay:0.00020833334,),
+                ),
+                chamber1: (
+                    samples: (delay:0.00020833334,),
+                ),
+                alpha: 0.44255716,
+                beta: 0.06,
+            ),
+            intake_waveguide: (
+                chamber0: (
+                    samples: (delay:0.00054166664,),
+                ),
+                chamber1: (
+                    samples: (delay:0.00054166664,),
+                ),
+                alpha: 0.80410254,
+                beta: -0.30482465,
+            ),
+            extractor_waveguide: (
+                chamber0: (
+                    samples: (delay:0.0008125,),
+                ),
+                chamber1: (
+                    samples: (delay:0.0008125,),
+                ),
+                alpha: 0,
+                beta: 0.016535282,
+            ),
+            intake_open_refl: 0.012284279,
+            intake_closed_refl: 0.80410254,
+            exhaust_open_refl: -0.011291921,
+            exhaust_closed_refl: 0.96289444,
+            piston_motion_factor: 3.9472303,
+            ignition_factor: 1.4436756,
+            ignition_time: 0.08337656,
+        ),// [8]
+        (
+            crank_offset: 0.9,
+            exhaust_waveguide: (
+                chamber0: (
+                    samples: (delay:0.00045833332,),
+                ),
+                chamber1: (
+                    samples: (delay:0.00045833332,),
+                ),
+                alpha: 0.96289444,
+                beta: 0.06,
+            ),
+            intake_waveguide: (
+                chamber0: (
+                    samples: (delay:0.00066666666,),
+                ),
+                chamber1: (
+                    samples: (delay:0.00066666666,),
+                ),
+                alpha: 0.80410254,
+                beta: -0.30482465,
+            ),
+            extractor_waveguide: (
+                chamber0: (
+                    samples: (delay:0.0018125,),
+                ),
+                chamber1: (
+                    samples: (delay:0.0018125,),
+                ),
+                alpha: 0,
+                beta: 0.016535282,
+            ),
+            intake_open_refl: 0.012284279,
+            intake_closed_refl: 0.80410254,
+            exhaust_open_refl: -0.011291921,
+            exhaust_closed_refl: 0.96289444,
+            piston_motion_factor: 3.9472303,
+            ignition_factor: 1.4436756,
+            ignition_time: 0.08337656,
+        ),// [9]
+    ],
+    intake_noise_factor: 0.25565025,
+    intake_noise_lp: (
+        delay: 0.0013163297,
+    ),
+    engine_vibration_filter: (
+        delay: 0.0002589073,
+    ),
+    muffler: (
+        straight_pipe: (
+            chamber0: (
+                samples: (
+                    delay: 0.0023541667,
+                ),
+            ),
+            chamber1: (
+                samples: (
+                    delay: 0.0023541667,
+                ),
+            ),
+            alpha: 0.12345505,
+            beta: -0.23960692,
+        ),
+        muffler_elements: [
+            (
+                chamber0: (
+                    samples: (delay:0.00027083332,),
+                ),
+                chamber1: (
+                    samples: (delay:0.00027083332,),
+                ),
+                alpha: 0,
+                beta: 0.07356477,
+            ),// [0]
+            (
+                chamber0: (
+                    samples: (delay:0.00025,),
+                ),
+                chamber1: (
+                    samples: (delay:0.00025,),
+                ),
+                alpha: 0,
+                beta: 0.07356477,
+            ),// [1]
+            (
+                chamber0: (
+                    samples: (delay:0.00016666666,),
+                ),
+                chamber1: (
+                    samples: (delay:0.00016666666,),
+                ),
+                alpha: 0,
+                beta: 0.07356477,
+            ),// [2]
+            (
+                chamber0: (
+                    samples: (delay:0.00014583333,),
+                ),
+                chamber1: (
+                    samples: (delay:0.00014583333,),
+                ),
+                alpha: 0,
+                beta: 0.07356477,
+            ),// [3]
+        ],
+    ),
+    intake_valve_shift: 0.0179137,
+    exhaust_valve_shift: 0.18213952,
+    crankshaft_fluctuation: 0,
+    crankshaft_fluctuation_lp: (
+        delay: 0.041110646,
+    ),
+)

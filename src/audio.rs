@@ -106,7 +106,7 @@ where
         }
     }
 
-    pub fn fill(&mut self, out: &mut [T]) {
+    pub fn fill(&mut self, out: &mut [T]) -> Result<(), crossbeam::crossbeam_channel::RecvError> {
         let mut i = self.remainder_len.min(out.len());
 
         out[..i].copy_from_slice(&self.remainder[..i]);
@@ -116,10 +116,8 @@ where
         self.remainder_len -= i;
 
         while i < out.len() {
-            let generated = self
-                .receiver
-                .recv()
-                .expect("Stream channel unexpectedly disconnected");
+            let generated = self.receiver.recv()?;
+
             if generated.len() > out.len() - i {
                 let left = out.len() - i;
                 out[i..].copy_from_slice(&generated[..left]);
@@ -139,6 +137,8 @@ where
                 i += generated.len();
             }
         }
+
+        Ok(())
     }
 }
 
@@ -151,6 +151,8 @@ impl AudioCallback for StreamingPlayer {
 
     /// takes buffered audio from the channel and stores excess data inside `self.samples_remainder`
     fn callback(&mut self, out: &mut [f32]) {
-        self.stream.fill(out);
+        self.stream
+            .fill(out)
+            .expect("channel broken in audio callback");
     }
 }

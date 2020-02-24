@@ -2,6 +2,7 @@ use crate::audio::ExactStreamer;
 use num_complex::Complex32;
 use num_traits::identities::Zero;
 use rustfft::FFT;
+use std::time::Instant;
 
 pub struct FFTStreamer {
     size: usize,
@@ -26,23 +27,48 @@ impl FFTStreamer {
         let mut buf = vec![0.0f32; self.size];
         let mut complex_buf = vec![Complex32::zero(); self.size];
         let mut complex_buf2 = vec![Complex32::zero(); self.size];
+
+        let mut frequencies = vec![0.0; self.size];
+        let mut last_frequencies = vec![0.0; self.size];
+        let mut last_time = Instant::now();
+
+        let fft = rustfft::algorithm::Radix4::new(self.size, false);
+
         loop {
-            self.stream.fill(&mut buf);
+            if self.stream.fill(&mut buf).is_err() {
+                break;
+            }
 
+            let window_fac = std::f32::consts::PI * 2.0 / self.size as f32;
             complex_buf.clear();
-            complex_buf.extend(buf.iter().map(|sample| Complex32::new(*sample, 0.0)));
+            complex_buf.extend(buf.iter().enumerate().map(|(i, sample)| {
+                Complex32::new(*sample * (0.54 - 0.46 * (i as f32 * window_fac).cos()), 0.0)
+            }));
 
-            rustfft::algorithm::Radix4::new(self.size, false)
-                .process(&mut complex_buf, &mut complex_buf2);
-            /* fft(&mut complex_buf[..]);
-            complex_buf2.copy_from_slice(&complex_buf);*/
+            fft.process(&mut complex_buf, &mut complex_buf2);
+
+            frequencies
+                .iter_mut()
+                .zip(complex_buf2.iter().map(|complex| complex.norm()))
+                .for_each(|(old, new)| *old = new);
+
+            let fac = 0.00005f32.powf(last_time.elapsed().as_secs_f32());
+            last_time = Instant::now();
+            last_frequencies
+                .iter_mut()
+                .zip(frequencies.iter())
+                .for_each(|(old, new)| {
+                    //(coefficient after one second).powf(time))
+                    *old *= fac;
+                    *old = old.max(*new);
+                });
 
             if self
                 .sender
                 .send(
-                    complex_buf2
+                    last_frequencies
                         .iter()
-                        .map(|complex| complex.norm())
+                        .map(|x| (((x * 0.008).exp() - 1.0) * 0.7).powf(0.5) * 2.0)
                         .collect::<Vec<f32>>(),
                 )
                 .is_err()
@@ -52,54 +78,3 @@ impl FFTStreamer {
         }
     }
 }
-
-/*
-/// Radix-2 DIF FFT
-/// writes output into `input`
-#[inline]
-pub fn fft(input: &mut [Complex32]) {
-    assert_eq!(2u32.pow(log2ui(input.len() as u32)), input.len() as u32);
-    assert!(input.len() > 1);
-
-    let mut output = vec![Complex32::zero(); input.len()];
-    fft_recurse(input, &mut output);
-    reorder(&output, input);
-}
-
-#[inline]
-fn fft_recurse(input: &mut [Complex32], output: &mut [Complex32]) {
-    if input.len() == 2 {
-        output[0] = input[0] + input[1];
-        output[1] = input[0] - input[1];
-    } else {
-        let half_len = input.len() / 2;
-
-        for i in 0..half_len {
-            let inputi = input[i];
-            let inputi_half = input[i + half_len];
-            input[i] = inputi + inputi_half;
-            input[i + half_len] = inputi - inputi_half;
-        }
-
-        fft_recurse(&mut input[..half_len], &mut output[..half_len]);
-
-        fft_recurse(&mut input[half_len..], &mut output[half_len..]);
-    }
-}
-
-fn reorder(input: &[Complex32], reordered_buf: &mut [Complex32]) {
-    for i in 0..input.len() {
-        reordered_buf[reverse_bits(i as u32, log2ui(input.len() as u32) as usize) as usize] =
-            input[i];
-    }
-}
-
-fn reverse_bits(value: u32, count: usize) -> u32 {
-    (0..count).fold(0u32, |acc, i| (acc << 1) | (value >> i) & 1)
-}
-
-/// Returns floor(log2(`n`))
-#[inline]
-pub const fn log2ui(n: u32) -> u32 {
-    (62 - (n.leading_zeros() << 1)) >> 1
-}*/

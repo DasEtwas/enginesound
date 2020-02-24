@@ -22,7 +22,7 @@ use std::time::SystemTime;
 
 pub const PI2F: f32 = 2.0 * std::f32::consts::PI;
 pub const PI4F: f32 = 4.0 * std::f32::consts::PI;
-pub const WAVEGUIDE_MAX_AMP: f32 = 20.0; // at this amplitude, a reciprocal damping function is applied to fight feedback loops
+pub const WAVEGUIDE_MAX_AMP: f32 = 20.0; // at this amplitude, a damping function is applied to fight feedback loops
 
 // https://www.researchgate.net/profile/Stefano_Delle_Monache/publication/280086598_Physically_informed_car_engine_sound_synthesis_for_virtual_and_augmented_environments/links/55a791bc08aea2222c746724/Physically-informed-car-engine-sound-synthesis-for-virtual-and-augmented-environments.pdf?origin=publication_detail
 
@@ -500,7 +500,7 @@ pub struct WaveGuide {
     // goes from x0 to x1
     pub chamber0: DelayLine,
     // goes from x1 to x0
-    chamber1: DelayLine,
+    pub chamber1: DelayLine,
     /// reflection factor for the first value of the return tuple of `pop`
     pub alpha: f32,
     /// reflection factor for the second value of the return tuple of `pop`
@@ -571,15 +571,32 @@ impl WaveGuide {
     ) -> Option<Self> {
         // the strictly compared values will never change without user interaction (adjusting sliders)
         if delay != self.chamber0.samples.len || alpha != self.alpha || beta != self.beta {
-            Some(Self::new(delay, alpha, beta, samples_per_second))
+            let mut new = Self::new(delay, alpha, beta, samples_per_second);
+
+            // used to reduce artifacts while resizing pipes _a bit_
+            fn copy_samples_faded(source: &[f32], dest: &mut [f32]) {
+                let min_len = source.len().min(dest.len());
+
+                dest[0..min_len].copy_from_slice(&source[0..min_len]);
+                let (a, b) = (*source.last().unwrap(), source[0]);
+                let dest_len = dest.len();
+                dest[min_len..]
+                    .iter_mut()
+                    .enumerate()
+                    .for_each(|(i, x)| *x = a + (b - a) * i as f32 / (dest_len - min_len) as f32);
+            }
+
+            copy_samples_faded(&self.chamber0.samples.data, &mut new.chamber0.samples.data);
+            copy_samples_faded(&self.chamber1.samples.data, &mut new.chamber1.samples.data);
+
+            Some(new)
         } else {
             None
         }
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(from = "crate::deser::LoopBufferDeser")]
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct LoopBuffer {
     // in seconds
     pub delay: f32,
@@ -647,7 +664,6 @@ impl LoopBuffer {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(from = "crate::deser::LowPassFilterDeser")]
 pub struct LowPassFilter {
     pub delay: f32,
     #[serde(skip)]

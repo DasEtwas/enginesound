@@ -1,27 +1,24 @@
-use crate::gen::{Engine, LowPassFilter};
+use crate::audio::{ExactStreamer, GENERATOR_BUFFER_SIZE};
+use crate::fft::FFTStreamer;
+use crate::gen::{Engine, LoopBuffer, LowPassFilter};
+use crate::gui::{GUIState, WATERFALL_WIDTH};
+use crate::recorder::Recorder;
+use anyhow::*;
+use clap::{value_t, value_t_or_exit, App, Arg};
+use conrod_core::text::Font;
+use glium::Surface;
 use parking_lot::RwLock;
+use std::{fs::File, sync::Arc};
 
 mod audio;
-mod deser;
 mod fft;
 mod gen;
 mod gui;
 mod recorder;
-
-use crate::audio::{ExactStreamer, GENERATOR_BUFFER_SIZE};
-use crate::fft::FFTStreamer;
-use crate::gui::{GUIState, WATERFALL_WIDTH};
-use crate::recorder::Recorder;
-use clap::{value_t, App, Arg};
-use conrod_core::text::Font;
-use glium::Surface;
-use std::{fs::File, io::Read, sync::Arc};
-
 mod support;
 
-const SAMPLE_RATE: u32 = 48000;
 const SPEED_OF_SOUND: f32 = 343.0; // m/s
-const SAMPLES_PER_CALLBACK: u32 = 512;
+const SAMPLES_PER_CALLBACK: u32 = 1024;
 const WINDOW_WIDTH: f64 = 800.0;
 const WINDOW_HEIGHT: f64 = 800.0;
 const DC_OFFSET_LP_FREQ: f32 = 4.0; // the frequency of the low pass filter which is subtracted from all samples to reduce dc offset and thus clipping
@@ -40,41 +37,34 @@ fn main() {
         .arg(Arg::with_name("volume").short("v").long("volume").help("Sets the master volume").default_value( "0.1"))
         .arg(Arg::with_name("rpm").short("r").long("rpm").help("Engine RPM").takes_value(true))
         .arg(Arg::with_name("warmup_time").short("w").long("warmup_time").help("Sets the time to wait in seconds before recording").default_value_if("headless", None, "3.0"))
-        .arg(Arg::with_name("reclen").short("l").long("length").help("Sets the time to record in seconds").default_value_if("headless", None, "5.0"))
+        .arg(Arg::with_name("reclen").short("l").long("length").help("Sets the time to record in seconds. The formula for the recommended time to record to get a seamless loop is as follows:\nlet wavelength = 120.0 / rpm;\nlet crossfade = wavelength * 2.0;\nlet reclen = audio_length + crossfade / 2.0;").default_value_if("headless", None, "5.0"))
         .arg(Arg::with_name("output_file").short("o").long("output").help("Sets the output .wav file path").default_value_if("headless", None, "output.wav"))
         .arg(Arg::with_name("crossfade").short("f").long("crossfade").help("Crossfades the recording in the middle end-to-start to create a seamless loop, although adjusting the recording's length to the rpm is recommended. The value sets the size of the crossfade, where the final output is decreased in length by crossfade_time/2.").default_value_if("headless", None, "0.00133"))
+        .arg(Arg::with_name("samplerate").short("q").long("samplerate").help("Generator sample rate").default_value("48000"))
         .get_matches();
 
-    let bytes;
-    let mut engine: Engine = match ron::de::from_bytes({
-        bytes = match matches.value_of("config") {
-            Some(path) => match File::open(path) {
-                Ok(mut file) => {
-                    let mut bytes = Vec::new();
-                    file.read_to_end(&mut bytes).unwrap();
-                    println!("Loaded config file \"{}\"", path);
-                    bytes
-                }
-                Err(e) => {
-                    eprintln!("Failed to open config file \"{}\": {}", path, e);
-                    std::process::exit(1);
-                }
-            },
-            None => DEFAULT_CONFIG.to_vec(),
-        };
-        &bytes
-    }) {
-        Ok(engine) => {
-            println!("Successfully loaded config");
+    let sample_rate = value_t_or_exit!(matches, "samplerate", u32);
+
+    let mut engine = match matches.value_of("config") {
+        Some(path) => match load_engine(path, sample_rate) {
+            Ok(engine) => {
+                println!("Successfully loaded config \"{}\"", path);
+                engine
+            }
+            Err(e) => {
+                eprintln!("Failed to load engine config \"{}\": {}", path, e);
+                std::process::exit(1);
+            }
+        },
+        None => {
+            let mut engine =
+                ron::de::from_bytes(DEFAULT_CONFIG).expect("default config is invalid");
+            fix_engine(&mut engine, sample_rate);
             engine
-        }
-        Err(e) => {
-            eprintln!("Failed to parse config: {}", e);
-            std::process::exit(2);
         }
     };
 
-    if let Ok(rpm) = value_t!(matches.value_of("rpm"), f32) {
+    if let Ok(rpm) = value_t!(matches, "rpm", f32) {
         engine.rpm = rpm.max(0.0);
     }
 
@@ -82,9 +72,9 @@ fn main() {
 
     // sound generator
     let mut generator = gen::Generator::new(
-        SAMPLE_RATE,
+        sample_rate,
         engine,
-        LowPassFilter::new(DC_OFFSET_LP_FREQ, SAMPLE_RATE),
+        LowPassFilter::new(DC_OFFSET_LP_FREQ, sample_rate),
     );
 
     generator.volume = value_t!(matches.value_of("volume"), f32).unwrap();
@@ -99,19 +89,21 @@ fn main() {
         println!("Warming up..");
 
         // warm up
-        generator.generate(&mut vec![0.0; seconds_to_samples(warmup_time)]);
+        generator.generate(&mut vec![0.0; seconds_to_samples(warmup_time, sample_rate)]);
 
         println!("Recording..");
 
         // record
-        let mut output = vec![0.0; seconds_to_samples(record_time)];
+        let mut output = vec![0.0; seconds_to_samples(record_time, sample_rate)];
 
         generator.generate(&mut output);
 
         if matches.occurrences_of("crossfade") != 0 {
             let crossfade_duration = value_t!(matches.value_of("crossfade"), f32).unwrap();
-            let crossfade_size =
-                seconds_to_samples(crossfade_duration.max(1.0 / SAMPLE_RATE as f32));
+            let crossfade_size = seconds_to_samples(
+                crossfade_duration.max(1.0 / sample_rate as f32),
+                sample_rate,
+            );
 
             if crossfade_size >= output.len() {
                 println!("Crossfade duration is too long {}", crossfade_duration);
@@ -143,7 +135,7 @@ fn main() {
             }
         }
 
-        let mut recorder = Recorder::new(output_filename.to_owned());
+        let mut recorder = Recorder::new(output_filename.to_owned(), sample_rate);
 
         println!("Started recording to \"{}\"", output_filename);
 
@@ -153,7 +145,7 @@ fn main() {
     } else {
         let generator = Arc::new(RwLock::new(generator));
 
-        let (audio, fft_receiver) = match audio::init(generator.clone(), SAMPLE_RATE) {
+        let (audio, fft_receiver) = match audio::init(generator.clone(), sample_rate) {
             Ok(audio) => audio,
             Err(e) => {
                 eprintln!("Failed to initialize SDL2 audio: {}", e);
@@ -217,10 +209,17 @@ fn main() {
                     if let glium::glutin::Event::WindowEvent { event, .. } = event {
                         match event {
                             glium::glutin::WindowEvent::DroppedFile(path) => {
-                                if let Some(new_engine) = crate::load_engine(
-                                    path.to_str().unwrap_or("<invalid UTF-8>").to_owned(),
-                                ) {
-                                    generator.write().engine = new_engine;
+                                let path = path.to_str().unwrap_or("invalid UTF-8 in path");
+                                match crate::load_engine(path, sample_rate) {
+                                    Ok(new_engine) => {
+                                        generator.write().engine = new_engine;
+                                    }
+                                    Err(e) => {
+                                        eprintln!(
+                                            "Failed to load engine config \"{}\": {}",
+                                            path, e
+                                        );
+                                    }
                                 }
                             }
                             glium::glutin::WindowEvent::CloseRequested
@@ -261,39 +260,87 @@ fn main() {
 }
 
 /// converts a given amount of time into samples
-pub fn seconds_to_samples(seconds: f32) -> usize {
-    (seconds * SAMPLE_RATE as f32).max(1.0) as usize
+pub fn seconds_to_samples(seconds: f32, sample_rate: u32) -> usize {
+    (seconds * sample_rate as f32).max(1.0) as usize
 }
 
 /// converts a given distance into samples via the speed of sound
-pub fn distance_to_samples(meters: f32) -> usize {
-    seconds_to_samples(meters / SPEED_OF_SOUND)
+pub fn distance_to_samples(meters: f32, sample_rate: u32) -> usize {
+    seconds_to_samples(meters / SPEED_OF_SOUND, sample_rate)
 }
 
-pub fn samples_to_seconds(samples: usize) -> f32 {
-    samples as f32 / SAMPLE_RATE as f32
+pub fn samples_to_seconds(samples: usize, sample_rate: u32) -> f32 {
+    samples as f32 / sample_rate as f32
 }
 
 /// returns meters
-pub fn samples_to_distance(samples: usize) -> f32 {
-    samples_to_seconds(samples) * SPEED_OF_SOUND
+pub fn samples_to_distance(samples: usize, sample_rate: u32) -> f32 {
+    samples_to_seconds(samples, sample_rate) * SPEED_OF_SOUND
 }
 
-pub fn load_engine(path: String) -> Option<Engine> {
-    match File::open(&path) {
+pub fn load_engine(path: &str, sample_rate: u32) -> Result<Engine, anyhow::Error> {
+    match File::open(path) {
         Ok(file) => match ron::de::from_reader::<_, Engine>(file) {
-            Ok(engine) => {
+            Ok(mut engine) => {
                 println!("Successfully loaded engine config \"{}\"", &path);
-                Some(engine)
+                fix_engine(&mut engine, sample_rate);
+                Ok(engine)
             }
-            Err(e) => {
-                eprintln!("Failed to load config \"{}\": {}", &path, e);
-                None
-            }
+            Err(e) => Err(anyhow!("Failed to load config \"{}\": {}", &path, e)),
         },
-        Err(e) => {
-            eprintln!("Failed to load file \"{}\": {}", &path, e);
-            None
-        }
+        Err(e) => Err(anyhow!("Failed to open file \"{}\": {}", &path, e)),
     }
+}
+
+pub fn fix_engine(engine: &mut Engine, sample_rate: u32) {
+    fn fix_lpf(lpf: &mut LowPassFilter, sample_rate: u32) {
+        let len = (lpf.delay * sample_rate as f32)
+            .min(sample_rate as f32)
+            .max(1.0);
+
+        *lpf = LowPassFilter {
+            samples: LoopBuffer::new(len.ceil() as usize, sample_rate),
+            delay: lpf.delay,
+            len,
+        };
+    }
+
+    fn fix_loop_buffer(lb: &mut LoopBuffer, sample_rate: u32) {
+        let len = (lb.delay * sample_rate as f32) as usize;
+        let bufsize = LoopBuffer::get_best_simd_size(len);
+
+        *lb = LoopBuffer {
+            delay: lb.delay,
+            len,
+            data: vec![0.0; bufsize],
+            pos: 0,
+        };
+    }
+
+    vec![
+        &mut engine.crankshaft_fluctuation_lp,
+        &mut engine.engine_vibration_filter,
+        &mut engine.intake_noise_lp,
+    ]
+    .into_iter()
+    .for_each(|lpf| fix_lpf(lpf, sample_rate));
+
+    engine
+        .muffler
+        .muffler_elements
+        .iter_mut()
+        .chain(std::iter::once(&mut engine.muffler.straight_pipe))
+        .flat_map(|waveguide| vec![&mut waveguide.chamber0, &mut waveguide.chamber1].into_iter())
+        .chain(engine.cylinders.iter_mut().flat_map(|cylinder| {
+            vec![
+                &mut cylinder.exhaust_waveguide.chamber0,
+                &mut cylinder.exhaust_waveguide.chamber1,
+                &mut cylinder.extractor_waveguide.chamber0,
+                &mut cylinder.extractor_waveguide.chamber1,
+                &mut cylinder.intake_waveguide.chamber0,
+                &mut cylinder.intake_waveguide.chamber1,
+            ]
+            .into_iter()
+        }))
+        .for_each(|delay_line| fix_loop_buffer(&mut delay_line.samples, sample_rate));
 }

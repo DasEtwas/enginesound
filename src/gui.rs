@@ -1,6 +1,6 @@
 use crate::{
     distance_to_samples, gen::Generator, recorder::Recorder, samples_to_distance, MAX_CYLINDERS,
-    MUFFLER_ELEMENT_COUNT, SAMPLE_RATE, SPEED_OF_SOUND,
+    MUFFLER_ELEMENT_COUNT, SPEED_OF_SOUND,
 };
 use chrono::{Datelike, Local, Timelike};
 use conrod_core::{
@@ -11,8 +11,8 @@ use parking_lot::RwLock;
 use std::{fs::File, io::Write, sync::Arc};
 
 // must be 2^n
-pub const WATERFALL_WIDTH: u32 = 256;
-pub const WATERFALL_HEIGHT: u32 = 100;
+pub const WATERFALL_WIDTH: u32 = 512;
+pub const WATERFALL_HEIGHT: u32 = 50;
 
 /// A set of reasonable stylistic defaults that works for the `gui` below.
 pub fn theme() -> conrod_core::Theme {
@@ -156,8 +156,17 @@ impl GUIState {
     }
 
     fn update(&mut self) {
-        if let Ok(new_line) = self.input.try_recv() {
-            self.add_line(&new_line[..WATERFALL_WIDTH as usize]);
+        while let Ok(new_line) = self.input.try_recv() {
+            let log_scale = (0..WATERFALL_WIDTH as usize)
+                .map(|i| {
+                    let new = (1.0 - (i + 1) as f32 / WATERFALL_WIDTH as f32).log2()
+                        / (WATERFALL_WIDTH as f32).recip().log2()
+                        * (WATERFALL_WIDTH - 1) as f32;
+                    new_line[(new.floor() as usize).saturating_sub(1)] * (1.0 - new.fract())
+                        + new_line[new.floor() as usize] * new.fract()
+                })
+                .collect::<Vec<f32>>();
+            self.add_line(&log_scale);
         }
     }
 
@@ -205,6 +214,27 @@ pub fn gui(
         .w(20.0)
         .set(ids.canvas_scrollbar, ui);
 
+    fn mix(x: f32, colors: &[([f32; 3], f32)]) -> [f32; 3] {
+        let colors = colors
+            .windows(2)
+            .find(|colors| {
+                let (_, start) = colors[0];
+                let (_, end) = colors[1];
+                start <= x && x < end
+            })
+            .expect("invalid color mix range");
+
+        let (low_color, low) = colors[0];
+        let (high_color, high) = colors[1];
+
+        let ratio = (x - low) / (high - low);
+        [
+            low_color[0] + (high_color[0] - low_color[0]) * ratio,
+            low_color[1] + (high_color[1] - low_color[1]) * ratio,
+            low_color[2] + (high_color[2] - low_color[2]) * ratio,
+        ]
+    }
+
     let image_map = {
         // receives (maybe) new FFT data
         gui_state.update();
@@ -213,17 +243,25 @@ pub fn gui(
             gui_state
                 .waterfall
                 .iter()
-                .enumerate()
-                .flat_map(|(i, float)| {
-                    let bytified = ((float
-                        * (0.5
-                            + (i % WATERFALL_WIDTH as usize) as f32 / WATERFALL_WIDTH as f32
-                                * 4.0))
-                        .min(1.0)
-                        .max(0.0)
-                        .powi(2)
-                        * 255.0) as u8;
-                    vec![bytified, bytified, bytified].into_iter()
+                .flat_map(|x| {
+                    let color = mix(
+                        x.max(0.0).min(10.0),
+                        &[
+                            ([0.0, 0.0, 0.0], 0.0),
+                            ([0.0, 0.2, 0.23], 0.21),
+                            ([0.0, 0.3, 0.6], 0.325),
+                            ([0.51, 0.36, 1.0], 0.44),
+                            ([1.0, 0.55, 0.0], 0.69),
+                            ([1.0, 0.86, 0.69], 0.85),
+                            ([1.0, 1.0, 1.0], 1.0),
+                            ([1.0, 1.0, 1.0], 10.01),
+                        ],
+                    );
+
+                    color
+                        .to_vec()
+                        .into_iter()
+                        .map(|x| (x.max(0.0).min(1.0) * 255.0) as u8)
                 })
                 .collect::<Vec<_>>()
                 .as_slice(),
@@ -238,7 +276,7 @@ pub fn gui(
             .mid_top_with_margin(TOP_MARGIN)
             .mid_left_of(ids.canvas)
             .w(BUTTON_WIDTH)
-            .h(WATERFALL_HEIGHT as f64)
+            .h(140.0)
             .set(ids.waterfall, ui);
 
         image_map
@@ -246,6 +284,7 @@ pub fn gui(
 
     {
         let mut generator = generator.write();
+        let sample_rate = generator.samples_per_second;
 
         {
             let (mut button_label, remove_recorder) = match &mut generator.recorder {
@@ -256,7 +295,7 @@ pub fn gui(
                         (
                             format!(
                                 "Stop recording [{:.3} sec recorded]",
-                                recorder.get_len() as f32 / crate::SAMPLE_RATE as f32
+                                recorder.get_len() as f32 / sample_rate as f32
                             ),
                             false,
                         )
@@ -281,9 +320,10 @@ pub fn gui(
                 .h(BUTTON_LINE_SIZE)
                 .set(ids.record_button, ui)
             {
+                let sample_rate = sample_rate;
                 match &mut generator.recorder {
                     None => {
-                        generator.recorder = Some(Recorder::new(recording_name()));
+                        generator.recorder = Some(Recorder::new(recording_name(), sample_rate));
                     }
                     Some(recorder) => {
                         recorder.stop();
@@ -493,12 +533,12 @@ pub fn gui(
             // engine_vibrations_lowpassfilter_freq
             {
                 const MIN: f32 = 10.0;
-                const MAX: f32 = SAMPLE_RATE as f32;
+                let max: f32 = sample_rate as f32;
                 let prev_val = generator
                     .engine
                     .engine_vibration_filter
-                    .get_freq(SAMPLE_RATE);
-                if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                    .get_freq(sample_rate);
+                if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(
                         format!(
                             "Engine vibrations Lowpass-Filter Frequency {:.2}hz",
@@ -515,7 +555,7 @@ pub fn gui(
                     let new = generator
                         .engine
                         .engine_vibration_filter
-                        .get_changed(value, SAMPLE_RATE);
+                        .get_changed(value, sample_rate);
 
                     if let Some(new) = new {
                         generator.engine.engine_vibration_filter = new;
@@ -525,9 +565,9 @@ pub fn gui(
             // intake_noise_factor
             {
                 const MIN: f32 = 0.0;
-                const MAX: f32 = 3.0;
+                let max: f32 = 3.0;
                 let prev_val = generator.engine.intake_noise_factor;
-                if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(format!("Intake noise volume {:.2}", prev_val).as_str())
                     .label_font_size(LABEL_FONT_SIZE)
                     .padded_w_of(ids.canvas, MARGIN)
@@ -540,9 +580,9 @@ pub fn gui(
             // intake_noise_lowpassfilter_freq
             {
                 const MIN: f32 = 10.0;
-                const MAX: f32 = SAMPLE_RATE as f32;
-                let prev_val = generator.engine.intake_noise_lp.get_freq(SAMPLE_RATE);
-                if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                let max: f32 = sample_rate as f32;
+                let prev_val = generator.engine.intake_noise_lp.get_freq(sample_rate);
+                if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(
                         format!("Intake noise Lowpass-Filter Frequency {:.2}hz", prev_val).as_str(),
                     )
@@ -555,7 +595,7 @@ pub fn gui(
                     let new = generator
                         .engine
                         .intake_noise_lp
-                        .get_changed(value, SAMPLE_RATE);
+                        .get_changed(value, sample_rate);
 
                     if let Some(new) = new {
                         generator.engine.intake_noise_lp = new;
@@ -565,9 +605,9 @@ pub fn gui(
             // intake_valve_shift
             {
                 const MIN: f32 = -0.5;
-                const MAX: f32 = 0.5;
+                let max: f32 = 0.5;
                 let prev_val = generator.engine.intake_valve_shift;
-                if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(format!("Intake valve cam shift {:.2} cycles", -prev_val).as_str())
                     .label_font_size(LABEL_FONT_SIZE)
                     .padded_w_of(ids.canvas, MARGIN)
@@ -580,9 +620,9 @@ pub fn gui(
             // exhaust_valve_shift
             {
                 const MIN: f32 = -0.5;
-                const MAX: f32 = 0.5;
+                let max: f32 = 0.5;
                 let prev_val = generator.engine.exhaust_valve_shift;
-                if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(format!("Exhaust valve cam shift {:.2} cycles", -prev_val).as_str())
                     .label_font_size(LABEL_FONT_SIZE)
                     .padded_w_of(ids.canvas, MARGIN)
@@ -596,9 +636,9 @@ pub fn gui(
             // crankshaft_fluctuation
             {
                 const MIN: f32 = 0.0;
-                const MAX: f32 = 2.5; // lower filter frequencies require more amplitude so its noticable
+                let max: f32 = 2.5; // lower filter frequencies require more amplitude so its noticable
                 let prev_val = generator.engine.crankshaft_fluctuation;
-                if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(format!("Crankshaft fluctuation factor {:.2}x", prev_val).as_str())
                     .label_font_size(LABEL_FONT_SIZE)
                     .padded_w_of(ids.canvas, MARGIN)
@@ -612,12 +652,12 @@ pub fn gui(
             // crankshaft_fluctuation_lowpassfilter_freq
             {
                 const MIN: f32 = 10.0;
-                const MAX: f32 = SAMPLE_RATE as f32;
+                let max: f32 = sample_rate as f32;
                 let prev_val = generator
                     .engine
                     .crankshaft_fluctuation_lp
-                    .get_freq(SAMPLE_RATE);
-                if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                    .get_freq(sample_rate);
+                if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(
                         format!(
                             "Crankshaft fluctuation noise Lowpass-Filter frequency {:.2}hz",
@@ -634,7 +674,7 @@ pub fn gui(
                     let new = generator
                         .engine
                         .crankshaft_fluctuation_lp
-                        .get_changed(value, SAMPLE_RATE);
+                        .get_changed(value, sample_rate);
 
                     if let Some(new) = new {
                         generator.engine.crankshaft_fluctuation_lp = new;
@@ -653,9 +693,9 @@ pub fn gui(
             // engine_muffler_straight_pipe_alpha
             {
                 const MIN: f32 = -1.0;
-                const MAX: f32 = 1.0;
+                let max: f32 = 1.0;
                 let prev_val = generator.engine.muffler.straight_pipe.alpha;
-                if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(
                         format!("Straight Pipe extractor-side reflectivity {:.2}", prev_val)
                             .as_str(),
@@ -671,9 +711,9 @@ pub fn gui(
             // engine_muffler_straight_pipe_beta
             {
                 const MIN: f32 = -1.0;
-                const MAX: f32 = 1.0;
+                let max: f32 = 1.0;
                 let prev_val = generator.engine.muffler.straight_pipe.beta;
-                if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(
                         format!("Straight Pipe muffler-side reflectivity {:.2}", prev_val).as_str(),
                     )
@@ -689,11 +729,11 @@ pub fn gui(
             // muffler_straight_pipe_length
             {
                 const MIN: f32 = 0.1;
-                const MAX: f32 = 3.0;
+                let max: f32 = 3.0;
                 let prev_val = generator.engine.muffler.straight_pipe.chamber0.samples.len as f32
                     * SPEED_OF_SOUND
-                    / SAMPLE_RATE as f32;
-                if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                    / sample_rate as f32;
+                if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(
                         format!(
                             "Straight Pipe length {:.2}m ({:.1}hz sine peak)",
@@ -711,10 +751,10 @@ pub fn gui(
                     let beta = generator.engine.muffler.straight_pipe.beta;
 
                     if let Some(newgen) = generator.engine.muffler.straight_pipe.get_changed(
-                        (value / SPEED_OF_SOUND * SAMPLE_RATE as f32) as usize,
+                        (value / SPEED_OF_SOUND * sample_rate as f32) as usize,
                         alpha,
                         beta,
-                        SAMPLE_RATE,
+                        sample_rate,
                     ) {
                         generator.engine.muffler.straight_pipe = newgen;
                     }
@@ -725,11 +765,11 @@ pub fn gui(
             let mut muffler_elements_beta;
             {
                 const MIN: f32 = -1.0;
-                const MAX: f32 = 0.3;
+                let max: f32 = 0.3;
                 let prev_val = generator.engine.muffler.muffler_elements[0].beta;
                 muffler_elements_beta = prev_val;
 
-                if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(
                         format!(
                             "Muffler elements output-side (exhaust) reflectivity {:.2}x",
@@ -756,9 +796,10 @@ pub fn gui(
                 // element_length
                 {
                     const MIN: f32 = 0.001;
-                    const MAX: f32 = 0.6;
-                    let prev_val = samples_to_distance(muffler_element.chamber0.samples.len);
-                    if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                    let max: f32 = 0.6;
+                    let prev_val =
+                        samples_to_distance(muffler_element.chamber0.samples.len, sample_rate);
+                    if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                         .label(
                             format!(
                                 "{} / Muffler cavity length {:.2}m ({:.1}hz sine peak)",
@@ -774,10 +815,10 @@ pub fn gui(
                         .set(ids.muffler_element_length[i], ui)
                     {
                         let new = muffler_element.get_changed(
-                            distance_to_samples(value),
+                            distance_to_samples(value, sample_rate),
                             muffler_element.alpha,
                             muffler_element.beta,
-                            SAMPLE_RATE,
+                            sample_rate,
                         );
 
                         if let Some(new) = new {
@@ -802,9 +843,9 @@ pub fn gui(
 
             {
                 const MIN: f32 = 1.0;
-                const MAX: f32 = MAX_CYLINDERS as f32;
+                let max: f32 = MAX_CYLINDERS as f32;
                 let prev_val = num_cylinders as f32;
-                if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(format!("Cylinder count {}", prev_val).as_str())
                     .label_font_size(LABEL_FONT_SIZE)
                     .padded_w_of(ids.canvas, MARGIN)
@@ -824,9 +865,9 @@ pub fn gui(
             // intake_open_refl
             {
                 const MIN: f32 = -1.0;
-                const MAX: f32 = 1.0;
+                let max: f32 = 1.0;
                 let prev_val = cylinder.intake_open_refl;
-                if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(
                         format!(
                             "Opened intake valve intake-cavity reflectivity {:.2}",
@@ -846,9 +887,9 @@ pub fn gui(
             // intake_closed_refl
             {
                 const MIN: f32 = -1.0;
-                const MAX: f32 = 1.0;
+                let max: f32 = 1.0;
                 let prev_val = cylinder.intake_closed_refl;
-                if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(
                         format!(
                             "Closed intake valve intake-cavity reflectivity {:.2}",
@@ -868,9 +909,9 @@ pub fn gui(
             // exhaust_open_refl
             {
                 const MIN: f32 = -1.0;
-                const MAX: f32 = 1.0;
+                let max: f32 = 1.0;
                 let prev_val = cylinder.exhaust_open_refl;
-                if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(
                         format!(
                             "Opened exhaust valve exhaust-cavity reflectivity {:.2}",
@@ -890,9 +931,9 @@ pub fn gui(
             // exhaust_closed_refl
             {
                 const MIN: f32 = -1.0;
-                const MAX: f32 = 1.0;
+                let max: f32 = 1.0;
                 let prev_val = cylinder.exhaust_closed_refl;
-                if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(
                         format!(
                             "Closed exhaust valve exhaust-cavity reflectivity {:.2}",
@@ -912,9 +953,9 @@ pub fn gui(
             // cylinder_intake_open_end_refl
             {
                 const MIN: f32 = -1.0;
-                const MAX: f32 = 1.0;
+                let max: f32 = 1.0;
                 let prev_val = cylinder.intake_waveguide.beta;
-                if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(format!("Intake-cavity open end reflectivity {:.2}", prev_val).as_str())
                     .label_font_size(LABEL_FONT_SIZE)
                     .padded_w_of(ids.canvas, MARGIN)
@@ -928,9 +969,9 @@ pub fn gui(
             // cylinder_extractor_open_end_refl
             {
                 const MIN: f32 = -1.0;
-                const MAX: f32 = 1.0;
+                let max: f32 = 1.0;
                 let prev_val = cylinder.extractor_waveguide.beta;
-                if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(
                         format!(
                             "Extractor-cavity straight pipe side reflectivity {:.2}",
@@ -950,9 +991,9 @@ pub fn gui(
             // piston_motion_factor
             {
                 const MIN: f32 = 0.0;
-                const MAX: f32 = 5.0;
+                let max: f32 = 5.0;
                 let prev_val = cylinder.piston_motion_factor;
-                if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(format!("Piston motion volume {:.2}", prev_val).as_str())
                     .label_font_size(LABEL_FONT_SIZE)
                     .padded_w_of(ids.canvas, MARGIN)
@@ -966,9 +1007,9 @@ pub fn gui(
             // ignition_factor
             {
                 const MIN: f32 = 0.0;
-                const MAX: f32 = 5.0;
+                let max: f32 = 5.0;
                 let prev_val = cylinder.ignition_factor;
-                if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(format!("Ignition volume {:.2}", prev_val).as_str())
                     .label_font_size(LABEL_FONT_SIZE)
                     .padded_w_of(ids.canvas, MARGIN)
@@ -982,9 +1023,9 @@ pub fn gui(
             // ignition_time
             {
                 const MIN: f32 = 0.0;
-                const MAX: f32 = 1.0;
+                let max: f32 = 1.0;
                 let prev_val = cylinder.ignition_time;
-                if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(format!("Ignition time {:.2}", prev_val).as_str())
                     .label_font_size(LABEL_FONT_SIZE)
                     .padded_w_of(ids.canvas, MARGIN)
@@ -1050,9 +1091,10 @@ pub fn gui(
                 // intake_pipe_length
                 {
                     const MIN: f32 = 0.0;
-                    const MAX: f32 = 1.0;
-                    let prev_val = samples_to_distance(cyl.intake_waveguide.chamber0.samples.len);
-                    if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                    let max: f32 = 1.0;
+                    let prev_val =
+                        samples_to_distance(cyl.intake_waveguide.chamber0.samples.len, sample_rate);
+                    if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                         .label(
                             format!("{} / Intake-cavity length {:.2}m", i + 1, prev_val).as_str(),
                         )
@@ -1062,10 +1104,10 @@ pub fn gui(
                         .set(ids.cylinder_intake_pipe_length[i], ui)
                     {
                         let new = cyl.intake_waveguide.get_changed(
-                            distance_to_samples(value),
+                            distance_to_samples(value, sample_rate),
                             cyl.intake_waveguide.alpha,
                             cyl.intake_waveguide.beta,
-                            SAMPLE_RATE,
+                            sample_rate,
                         );
 
                         if let Some(new) = new {
@@ -1076,9 +1118,12 @@ pub fn gui(
                 // exhaust_pipe_length
                 {
                     const MIN: f32 = 0.0;
-                    const MAX: f32 = 1.7;
-                    let prev_val = samples_to_distance(cyl.exhaust_waveguide.chamber0.samples.len);
-                    if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                    let max: f32 = 1.7;
+                    let prev_val = samples_to_distance(
+                        cyl.exhaust_waveguide.chamber0.samples.len,
+                        sample_rate,
+                    );
+                    if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                         .label(
                             format!("{} / Exhaust-cavity length {:.2}m", i + 1, prev_val).as_str(),
                         )
@@ -1088,10 +1133,10 @@ pub fn gui(
                         .set(ids.cylinder_exhaust_pipe_length[i], ui)
                     {
                         let new = cyl.exhaust_waveguide.get_changed(
-                            distance_to_samples(value),
+                            distance_to_samples(value, sample_rate),
                             cyl.exhaust_waveguide.alpha,
                             cyl.exhaust_waveguide.beta,
-                            SAMPLE_RATE,
+                            sample_rate,
                         );
 
                         if let Some(new) = new {
@@ -1102,10 +1147,12 @@ pub fn gui(
                 // extractor_pipe_length
                 {
                     const MIN: f32 = 0.0;
-                    const MAX: f32 = 10.0;
-                    let prev_val =
-                        samples_to_distance(cyl.extractor_waveguide.chamber0.samples.len);
-                    if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                    let max: f32 = 10.0;
+                    let prev_val = samples_to_distance(
+                        cyl.extractor_waveguide.chamber0.samples.len,
+                        sample_rate,
+                    );
+                    if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                         .label(
                             format!("{} / Extractor-cavity length {:.2}m", i + 1, prev_val)
                                 .as_str(),
@@ -1116,10 +1163,10 @@ pub fn gui(
                         .set(ids.cylinder_extractor_pipe_length[i], ui)
                     {
                         let new = cyl.extractor_waveguide.get_changed(
-                            distance_to_samples(value),
+                            distance_to_samples(value, sample_rate),
                             cyl.extractor_waveguide.alpha,
                             cyl.extractor_waveguide.beta,
-                            SAMPLE_RATE,
+                            sample_rate,
                         );
 
                         if let Some(new) = new {
@@ -1130,9 +1177,9 @@ pub fn gui(
                 // crank_offset
                 {
                     const MIN: f32 = 0.0;
-                    const MAX: f32 = 1.0;
+                    let max: f32 = 1.0;
                     let prev_val = cyl.crank_offset;
-                    if let Some(value) = widget::Slider::new(prev_val, MIN, MAX)
+                    if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                         .label(format!("{} / Crank offset {:.3} cycles", i + 1, prev_val).as_str())
                         .label_font_size(LABEL_FONT_SIZE)
                         .padded_w_of(ids.canvas, MARGIN)
@@ -1145,24 +1192,6 @@ pub fn gui(
             }
         }
     }
-
-    /* regex pattern
-            // $1
-            {
-                const MIN: f32 = 0.0;
-                const MAX:f32 = 1.0;
-                let prev_val = generator.engine.$1;
-                for value in widget::Slider::new(prev_val, MIN, MAX)
-                    .label(format!("$1 {:.2}", prev_val).as_str())
-                    .label_font_size(LABEL_FONT_SIZE)
-                    .padded_w_of(ids.canvas, PAD)
-                   .down(DOWN_SPACE)
-                    .set(ids.engine_$1, ui)
-                    {
-                        generator.engine.$1 = value;
-                    }
-            }
-    */
 
     image_map
 }

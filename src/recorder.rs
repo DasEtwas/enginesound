@@ -19,7 +19,7 @@ pub struct Recorder {
 }
 
 impl Recorder {
-    pub fn new(filename: String) -> Recorder {
+    pub fn new(filename: String, sample_rate: u32) -> Recorder {
         let (send, recv) = crossbeam::unbounded();
 
         let ret = Recorder {
@@ -28,11 +28,11 @@ impl Recorder {
             running: Arc::new(AtomicBool::new(true)),
             block_lock: Arc::new(Mutex::new(())),
         };
-        ret.start(recv, filename);
+        ret.start(recv, filename, sample_rate);
         ret
     }
 
-    fn start(&self, recv: crossbeam::Receiver<Vec<f32>>, filename: String) {
+    fn start(&self, recv: crossbeam::Receiver<Vec<f32>>, filename: String, sample_rate: u32) {
         std::thread::spawn({
             let running = self.running.clone();
             let block_lock = self.block_lock.clone();
@@ -45,7 +45,7 @@ impl Recorder {
                     })),
                     WavSpec {
                         channels: 1,
-                        sample_rate: crate::SAMPLE_RATE,
+                        sample_rate,
                         bits_per_sample: 16,
                         sample_format: SampleFormat::Int,
                     },
@@ -87,7 +87,7 @@ impl Recorder {
                 println!(
                     "Done writing WAV to File \"{}\" (wrote {:.3} sec)",
                     filename,
-                    wav_writer.len() as f32 / crate::SAMPLE_RATE as f32
+                    wav_writer.len() as f32 / sample_rate as f32
                 );
 
                 // keeping lock in scope explicitly

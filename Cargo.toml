@@ -11,15 +11,16 @@ It features real-time recording of the engine, a CLI, automatic crossfading to c
 [dependencies]
 # recording #
 hound = "3.4.0"
-crossbeam = "0.7.1"
-chrono = "0.4.6"
+crossbeam = "0.7.3"
+chrono = "0.4.10"
 
 # saving presets #
 serde = { version = "1.0.90", features = ["derive"] }
 ron = "0.5.1"
 
 # misc #
-parking_lot = "0.7.1"
+parking_lot = "0.10.0"
+anyhow = "1.0.26"
 
 # gui #
 glium = "0.23.0"
@@ -28,16 +29,19 @@ conrod_glium = "0.63.0"
 conrod_winit = "0.63.0"
 
 # fft #
-num-traits = "0.2.8"
-num-complex = "0.2.3"
-rustfft = "3.0.0"
+num-traits = "0.2.11"
+num-complex = "0.2.4"
+rustfft = "3.0.1"
 
 # sound #
-rand_core = "0.4.0"
-rand_xorshift ="0.1.1"
-sdl2 = "0.32.2"
-simdeez = "0.6.2"
+rand_core = "0.5.1"
+rand_xorshift ="0.2.0"
+sdl2 = "0.33.0"
+simdeez = "1.0.0"
 paste = "^0.1.4"
 
 # cli #
 clap = "2.33.0"
+
+[profile.release]
+debug = true
