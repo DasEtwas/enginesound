@@ -1,7 +1,6 @@
-use crate::{
-    distance_to_samples, gen::Generator, recorder::Recorder, samples_to_distance, MAX_CYLINDERS,
-    MUFFLER_ELEMENT_COUNT, SPEED_OF_SOUND,
-};
+use crate::constants::{MAX_CYLINDERS, MUFFLER_ELEMENT_COUNT};
+use crate::utils::{distance_to_samples, samples_to_distance, SPEED_OF_SOUND};
+use crate::{gen::Generator, recorder::Recorder};
 use chrono::{Datelike, Local, Timelike};
 use conrod_core::{
     position::{Align, Direction, Padding, Relative},

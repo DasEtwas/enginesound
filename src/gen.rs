@@ -184,7 +184,7 @@ impl Cylinder {
 }
 
 pub struct Generator {
-    pub recorder: Option<Recorder>,
+    pub(crate) recorder: Option<Recorder>,
     pub volume: f32,
     pub samples_per_second: u32,
     pub engine: Engine,
@@ -197,7 +197,7 @@ pub struct Generator {
 }
 
 impl Generator {
-    pub(crate) fn new(samples_per_second: u32, engine: Engine, dc_lp: LowPassFilter) -> Generator {
+    pub fn new(samples_per_second: u32, engine: Engine, dc_lp: LowPassFilter) -> Generator {
         Generator {
             recorder: None,
             volume: 0.1_f32,
@@ -209,31 +209,27 @@ impl Generator {
         }
     }
 
-    pub(crate) fn generate(&mut self, buf: &mut [f32]) {
-        let crankshaft_pos = self.engine.crankshaft_pos;
+    pub fn generate(&mut self, buf: &mut [f32]) {
         let samples_per_second = self.samples_per_second as f32 * 120.0;
 
         self.recording_currently_clipping = false;
         self.waveguides_dampened = false;
 
-        let mut i = 1.0;
-        let mut ii = 0;
-        while ii < buf.len() {
-            self.engine.crankshaft_pos =
-                (crankshaft_pos + i * self.get_rpm() / samples_per_second).fract();
-            let samples = self.gen();
-            let sample = (samples.0 * self.get_intake_volume()
-                + samples.1 * self.get_engine_vibrations_volume()
-                + samples.2 * self.get_exhaust_volume())
+        let inc = self.get_rpm() / samples_per_second;
+
+        buf.iter_mut().for_each(|sample| {
+            self.engine.crankshaft_pos = (self.engine.crankshaft_pos + inc).fract();
+
+            let channels = self.gen();
+            let mixed = (channels.0 * self.get_intake_volume()
+                + channels.1 * self.get_engine_vibrations_volume()
+                + channels.2 * self.get_exhaust_volume())
                 * self.get_volume();
-            self.waveguides_dampened |= samples.3;
+            self.waveguides_dampened |= channels.3;
 
             // reduces dc offset
-            buf[ii] = sample - self.dc_lp.filter(sample);
-
-            i += 1.0;
-            ii += 1;
-        }
+            *sample = mixed - self.dc_lp.filter(mixed);
+        });
 
         if let Some(recorder) = &mut self.recorder {
             let bufvec = buf.to_vec();
