@@ -1,6 +1,3 @@
-use glium;
-use std;
-
 pub struct GliumDisplayWinitWrapper(pub glium::Display);
 
 impl GliumDisplayWinitWrapper {

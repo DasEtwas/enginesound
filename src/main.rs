@@ -22,7 +22,6 @@ mod recorder;
 mod support;
 mod utils;
 
-const SAMPLES_PER_CALLBACK: u32 = 1024;
 const WINDOW_WIDTH: f64 = 800.0;
 const WINDOW_HEIGHT: f64 = 800.0;
 

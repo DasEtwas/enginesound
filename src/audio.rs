@@ -3,10 +3,7 @@ use crate::gen::Generator;
 use cpal::traits::DeviceTrait;
 use cpal::traits::EventLoopTrait;
 use cpal::traits::HostTrait;
-use cpal::{
-    Format, Host, SampleFormat, SampleRate, StreamData, UnknownTypeInputBuffer,
-    UnknownTypeOutputBuffer,
-};
+use cpal::{Format, Host, SampleFormat, SampleRate, StreamData, UnknownTypeOutputBuffer};
 use parking_lot::RwLock;
 use std::sync::Arc;
 
@@ -27,7 +24,7 @@ pub fn init(
     let event_loop = host.event_loop();
     let speaker = host
         .default_output_device()
-        .ok_or(format!("Failed to get default audio output device"))?;
+        .ok_or_else(|| "Failed to get default audio output device".to_string())?;
 
     println!("== Audio ouput: {}", speaker.name().unwrap());
 
@@ -42,29 +39,28 @@ pub fn init(
         )
         .expect("Failed to build audio output stream");
 
-    event_loop.play_stream(speaker_stream_id.clone()).unwrap();
+    event_loop.play_stream(speaker_stream_id).unwrap();
 
     std::thread::spawn({
         move || {
             let mut stream = ExactStreamer::new(GENERATOR_BUFFER_SIZE, device_receiver);
 
-            event_loop.run(move |stream_id, data| match data {
+            event_loop.run(move |_stream_id, data| match data {
                 Ok(StreamData::Output {
                     buffer: UnknownTypeOutputBuffer::F32(mut data),
                 }) => {
-                    stream.fill(&mut data);
+                    let _ = stream.fill(&mut data);
                 }
                 Err(e) => {
                     println!("== An error occurred: {}", e);
-                    return;
                 }
-                _ => return,
+                _ => (),
             });
         }
     });
 
     println!(
-        "Audio driver: {:?}\nSamplerate: {:?}",
+        "Audio driver: {:?}\nSamplerate: {} Hz",
         host.id(),
         sample_rate
     );
