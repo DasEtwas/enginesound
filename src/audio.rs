@@ -26,6 +26,12 @@ pub fn init(
         .default_output_device()
         .ok_or_else(|| "Failed to get default audio output device".to_string())?;
 
+    println!(
+        "Audio driver: {:?}\nSamplerate: {} Hz",
+        host.id(),
+        sample_rate
+    );
+
     println!("Audio output device: {}", speaker.name().unwrap());
 
     let format = speaker
@@ -39,13 +45,15 @@ pub fn init(
             &speaker,
             &Format {
                 sample_rate: SampleRate(sample_rate),
-                channels: 1,
+                channels: format.channels,
                 data_type: format.data_type,
             },
         )
         .expect("Failed to build audio output stream");
 
     event_loop.play_stream(speaker_stream_id).unwrap();
+
+    let channels = format.channels as usize;
 
     std::thread::spawn({
         move || {
@@ -56,32 +64,44 @@ pub fn init(
             event_loop.run(move |_stream_id, data| match data {
                 Ok(StreamData::Output { buffer }) => match buffer {
                     UnknownTypeOutputBuffer::F32(mut data) => {
-                        let _ = stream.fill(&mut data);
+                        let _ = stream.fill(&mut buf[..data.len() / channels]);
+                        data.chunks_mut(channels)
+                            .zip(buf.iter())
+                            .for_each(|(a, &b)| {
+                                a.iter_mut().for_each(|a| *a = b);
+                            });
                     }
                     UnknownTypeOutputBuffer::U16(mut data) => {
-                        let _ = stream.fill(&mut buf[..data.len()]);
-                        data.iter_mut().zip(buf.iter()).for_each(|(a, &b)| {
-                            *a = if b > 1.0 {
-                                std::u16::MAX
-                            } else if b < -1.0 {
-                                0
-                            } else {
-                                (((b + 1.0) * std::u16::MAX as f32) as u32 / 2) as u16
-                            }
-                        });
+                        let _ = stream.fill(&mut buf[..data.len() / channels]);
+                        data.chunks_mut(channels)
+                            .zip(buf.iter())
+                            .for_each(|(a, &b)| {
+                                let v = if b > 1.0 {
+                                    std::u16::MAX
+                                } else if b < -1.0 {
+                                    0
+                                } else {
+                                    (((b + 1.0) * std::u16::MAX as f32) as u32 / 2) as u16
+                                };
+                                a.iter_mut().for_each(|a| *a = v);
+                            });
                     }
                     UnknownTypeOutputBuffer::I16(mut data) => {
-                        let _ = stream.fill(&mut buf[..data.len()]);
-                        data.iter_mut().zip(buf.iter()).for_each(|(a, &b)| {
-                            *a = (if b > 1.0 {
-                                std::u16::MAX
-                            } else if b < -1.0 {
-                                0
-                            } else {
-                                (((b + 1.0) * std::u16::MAX as f32) as u32 / 2) as u16
-                            } as i32
-                                + std::u16::MIN as i32) as i16
-                        });
+                        let _ = stream.fill(&mut buf[..data.len() / channels]);
+                        data.chunks_mut(channels)
+                            .zip(buf.iter())
+                            .for_each(|(a, &b)| {
+                                let v = (if b > 1.0 {
+                                    std::u16::MAX
+                                } else if b < -1.0 {
+                                    0
+                                } else {
+                                    (((b + 1.0) * std::u16::MAX as f32) as u32 / 2) as u16
+                                } as i32
+                                    + std::u16::MIN as i32)
+                                    as i16;
+                                a.iter_mut().for_each(|a| *a = v);
+                            });
                     }
                 },
                 Err(e) => {
@@ -91,12 +111,6 @@ pub fn init(
             });
         }
     });
-
-    println!(
-        "Audio driver: {:?}\nSamplerate: {} Hz",
-        host.id(),
-        sample_rate
-    );
 
     std::thread::spawn({
         move || {
