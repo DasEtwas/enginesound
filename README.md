@@ -35,15 +35,6 @@ loosely based on [this paper](https://www.researchgate.net/publication/280086598
 * crossfade argument which cuts the recording in half, swaps the halves and fades the middle for x seconds (reduces output length by x/2 seconds), used to make seamless loops
 * warmup time argument to wait for the resonances in the acoustic chambers to be established before recording
 
-## Building ##
-
-libSDL2 (and -devel) packages will need to be installed:
-[Instructions on how to build with Rust-SDL2](https://github.com/Rust-SDL2/rust-sdl2/blob/master/README.md#requirements)
-
-#### Windows MinGW ####
-The folder [win_sdl_libs](win_sdl_libs) contains a script which should help fix linking errors, but it does copy a
-few files to the default toolchain.
-
 ## Preview ##
 ### CLI ###
 ```
