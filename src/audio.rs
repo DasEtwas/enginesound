@@ -3,7 +3,7 @@ use crate::gen::Generator;
 use cpal::traits::DeviceTrait;
 use cpal::traits::EventLoopTrait;
 use cpal::traits::HostTrait;
-use cpal::{Format, Host, SampleFormat, SampleRate, StreamData, UnknownTypeOutputBuffer};
+use cpal::{Format, Host, SampleRate, StreamData, UnknownTypeOutputBuffer};
 use parking_lot::RwLock;
 use std::sync::Arc;
 
@@ -26,7 +26,13 @@ pub fn init(
         .default_output_device()
         .ok_or_else(|| "Failed to get default audio output device".to_string())?;
 
-    println!("== Audio ouput: {}", speaker.name().unwrap());
+    println!("Audio output device: {}", speaker.name().unwrap());
+
+    let format = speaker
+        .default_output_format()
+        .expect("Failed to get default audio device's default output format");
+
+    println!("Audio output format: {:?}", format.data_type);
 
     let speaker_stream_id = event_loop
         .build_output_stream(
@@ -34,7 +40,7 @@ pub fn init(
             &Format {
                 sample_rate: SampleRate(sample_rate),
                 channels: 1,
-                data_type: SampleFormat::F32,
+                data_type: format.data_type,
             },
         )
         .expect("Failed to build audio output stream");
@@ -45,12 +51,39 @@ pub fn init(
         move || {
             let mut stream = ExactStreamer::new(GENERATOR_BUFFER_SIZE, device_receiver);
 
+            let mut buf = [0.0; 8192];
+
             event_loop.run(move |_stream_id, data| match data {
-                Ok(StreamData::Output {
-                    buffer: UnknownTypeOutputBuffer::F32(mut data),
-                }) => {
-                    let _ = stream.fill(&mut data);
-                }
+                Ok(StreamData::Output { buffer }) => match buffer {
+                    UnknownTypeOutputBuffer::F32(mut data) => {
+                        let _ = stream.fill(&mut data);
+                    }
+                    UnknownTypeOutputBuffer::U16(mut data) => {
+                        let _ = stream.fill(&mut buf[..data.len()]);
+                        data.iter_mut().zip(buf.iter()).for_each(|(a, &b)| {
+                            *a = if b > 1.0 {
+                                std::u16::MAX
+                            } else if b < -1.0 {
+                                0
+                            } else {
+                                (((b + 1.0) * std::u16::MAX as f32) as u32 / 2) as u16
+                            }
+                        });
+                    }
+                    UnknownTypeOutputBuffer::I16(mut data) => {
+                        let _ = stream.fill(&mut buf[..data.len()]);
+                        data.iter_mut().zip(buf.iter()).for_each(|(a, &b)| {
+                            *a = (if b > 1.0 {
+                                std::u16::MAX
+                            } else if b < -1.0 {
+                                0
+                            } else {
+                                (((b + 1.0) * std::u16::MAX as f32) as u32 / 2) as u16
+                            } as i32
+                                + std::u16::MIN as i32) as i16
+                        });
+                    }
+                },
                 Err(e) => {
                     println!("== An error occurred: {}", e);
                 }
