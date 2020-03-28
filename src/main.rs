@@ -1,5 +1,6 @@
-use crate::audio::{ExactStreamer, GENERATOR_BUFFER_SIZE};
+use crate::audio::GENERATOR_BUFFER_SIZE;
 use crate::constants::DC_OFFSET_LP_FREQ;
+use crate::exactstreamer::ExactStreamer;
 use crate::fft::FFTStreamer;
 use crate::gen::LowPassFilter;
 use crate::gui::{GUIState, WATERFALL_WIDTH};
@@ -13,6 +14,7 @@ use std::sync::Arc;
 
 mod audio;
 mod constants;
+mod exactstreamer;
 mod fft;
 mod gen;
 mod gui;

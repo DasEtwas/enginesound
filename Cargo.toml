@@ -36,7 +36,7 @@ rustfft = "3.0.1"
 # sound #
 rand_core = "0.5.1"
 rand_xorshift ="0.2.0"
-sdl2 = "0.33.0"
+cpal = "0.11.0"
 simdeez = "1.0.0"
 paste = "0.1.4"
 

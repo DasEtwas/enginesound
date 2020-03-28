@@ -39,15 +39,7 @@ pub fn load_engine(path: &str, sample_rate: u32) -> Result<Engine, anyhow::Error
 
 pub fn fix_engine(engine: &mut Engine, sample_rate: u32) {
     fn fix_lpf(lpf: &mut LowPassFilter, sample_rate: u32) {
-        let len = (lpf.delay * sample_rate as f32)
-            .min(sample_rate as f32)
-            .max(1.0);
-
-        *lpf = LowPassFilter {
-            samples: LoopBuffer::new(len.ceil() as usize, sample_rate),
-            delay: lpf.delay,
-            len,
-        };
+        *lpf = LowPassFilter::new(1.0 / lpf.delay, sample_rate);
     }
 
     fn fix_loop_buffer(lb: &mut LoopBuffer, sample_rate: u32) {

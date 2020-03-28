@@ -1,4 +1,4 @@
-use crate::audio::ExactStreamer;
+use crate::exactstreamer::ExactStreamer;
 use num_complex::Complex32;
 use num_traits::identities::Zero;
 use rustfft::FFT;
