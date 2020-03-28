@@ -1070,23 +1070,18 @@ pub fn gui(
                         cyl.extractor_waveguide.beta = cylinder.extractor_waveguide.beta;
                     }
 
-                    // set the last cylinder's crank offset correctly
+                    for _ in generator.engine.cylinders.len()..num_cylinders {
+                        // set the last cylinder's crank offset correctly
+                        cylinder.crank_offset = (num_cylinders - 1) as f32 / num_cylinders as f32;
 
-                    cylinder.crank_offset = (num_cylinders - 1) as f32 / num_cylinders as f32;
-
-                    new_cylinders.push(cylinder);
+                        new_cylinders.push(cylinder.clone());
+                    }
 
                     new_cylinders
                 };
             }
 
             for (i, mut cyl) in generator.engine.cylinders.iter_mut().enumerate() {
-                /*
-                exhaust_waveguide: WaveGuide::new(seconds_to_samples(0.7 / speed_of_sound), -1000.0, 0.0),
-                intake_waveguide:    WaveGuide::new(seconds_to_samples(0.7 / speed_of_sound), -1000.0, -0.5),
-                extractor_waveguide: WaveGuide::new(seconds_to_samples(1.0 / speed_of_sound), 0.0, 0.7),
-                */
-
                 // intake_pipe_length
                 {
                     const MIN: f32 = 0.0;
@@ -1099,7 +1094,7 @@ pub fn gui(
                         )
                         .label_font_size(LABEL_FONT_SIZE)
                         .padded_w_of(ids.canvas, MARGIN)
-                        .down(DOWN_SPACE)
+                        .down(DOWN_SPACE * 2.3)
                         .set(ids.cylinder_intake_pipe_length[i], ui)
                     {
                         let new = cyl.intake_waveguide.get_changed(
