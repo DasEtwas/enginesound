@@ -4,9 +4,9 @@ GUI Application used to generate purely synthetic engine sounds with advanced op
 
 loosely based on [this paper](https://www.researchgate.net/publication/280086598_Physically_informed_car_engine_sound_synthesis_for_virtual_and_augmented_environments "Physically informed_car engine sound synthesis for virtual and augmented environments")
 
-#### Reading the paper is highly recommended to understand the parameters ####
+#### Reading the paper is highly recommended to understand the parameters
 
-## Features ##
+## Features
 
 
 #### General ####
@@ -19,7 +19,7 @@ loosely based on [this paper](https://www.researchgate.net/publication/280086598
 * Intake, Exhaust and Engine vibrations mixing
 * Resonance dampening (can save your audio equipement and ears)
 
-#### GUI specific ####
+#### GUI specific
 * GUI made with conrod/glium
 * Real-time preview of parameters with SDL2 audio streaming
 * Real-time interactive parameter sliders with small descriptions
@@ -28,15 +28,15 @@ loosely based on [this paper](https://www.researchgate.net/publication/280086598
 * Save button to save the current parameters into a timestamped file in the current working directory
 * Reset sampler button to kill resonances in all acoustic chambers
 
-#### CLI specific ####
+#### CLI specific
 * headless mode which does not start audio streaming or a GUI
 * config argument to specify the file containing RON-serialized parameters
 * volume/rpm/length arguments to control master volume/engine rpm/recording length
 * crossfade argument which cuts the recording in half, swaps the halves and fades the middle for x seconds (reduces output length by x/2 seconds), used to make seamless loops
 * warmup time argument to wait for the resonances in the acoustic chambers to be established before recording
 
-## Preview ##
-### CLI ###
+## Preview
+### CLI
 ```
 Engine Sound Generator 1.3.0
 https://github.com/DasEtwas/
@@ -70,19 +70,35 @@ OPTIONS:
     -w, --warmup_time <warmup_time>    Sets the time to wait in seconds before recording
 ```
 
-### GUI ###
+### GUI
 ![Image](example.png)
 
-### Sound ###
+### Sound
 Generated using the config shown above while adjusting the RPM manually: [Audio file](example.mp3)
 
-## Packaging ##
-### Windows ###
+#### Example pseudocode for generating a seamless loop
+
+```
+rpm = 1300
+wavelength = 120 / rpm
+average_len = 3.2                             // seconds
+cycles = ceil(average_len / wavelength)
+crossfade = 2 * wavelength
+length = wavelength * cycles + crossfade / 2
+warmup = 2                                    // seconds
+fade_length = crossfade
+volume = 0.5                                  // 50%
+
+enginesound.exe -h -c config_file.esc -o output_file.wav -f $fade_length -l $length -w $warmup -r $rpm -v $volume
+```
+
+## Packaging
+### Windows
 Just be sure that SDL2.dll is next to the .exe
 
-### Linux ###
+### Linux
 SDL2 will need to be installed to run
 
-## Licensing ##
+## Licensing
 
 MIT License
