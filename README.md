@@ -10,38 +10,30 @@ loosely based on [this paper](https://www.researchgate.net/publication/280086598
 
 
 #### General ####
-```
- - Variable engine parameters
- - 48khz mono WAV recording
- - RON SerDe of engine parameters
- - SIMD accelerated low pass filtering with simdeez
- - Pseudorealistic acoustic pipe/chamber simulation (speed of sound, end reflection)
-   based on the above paper
- - Advanced clap-rs powered CLI
- - Intake, Exhaust and Engine vibrations mixing
-```
+* Variable engine parameters
+* Mono WAV recording
+* RON SerDe of engine parameters
+* SIMD accelerated low pass filtering with simdeez
+* Pseudorealistic acoustic pipe/chamber simulation (speed of sound, pipe end reflection) based on the above paper
+* Advanced clap-rs powered CLI
+* Intake, Exhaust and Engine vibrations mixing
+* Resonance dampening (can save your audio equipement and ears)
 
 #### GUI specific ####
-```
- - GUI made with conrod/glium
- - Real-time preview of parameters with SDL2 audio
- - Real-time interactive parameter sliders with small descriptions
- - Record/Stop button
- - Dropping a config into the window loads the config
- - Save button to save the current parameters into a timestamped file in the current working directory
- - Reset sampler button to kill resonances in all acoustic chambers
-```
+* GUI made with conrod/glium
+* Real-time preview of parameters with SDL2 audio streaming
+* Real-time interactive parameter sliders with small descriptions
+* Record/Stop button
+* Dropping a config into the window loads the config
+* Save button to save the current parameters into a timestamped file in the current working directory
+* Reset sampler button to kill resonances in all acoustic chambers
 
 #### CLI specific ####
-```
- - headless mode which does not start audio streaming or a GUI
- - config argument to specify the file containing RON-serialized parameters
- - volume/rpm/length arguments to control master volume/engine rpm/recording length
- - crossfade argument which cuts the recording in half, swaps the halves and
-   fades the middle for x seconds (reduces output length by x/2 seconds), used to make seamless loops
- - warmup time argument to wait for the resonances in the acoustic chambers to be
-   established before recording
-```
+* headless mode which does not start audio streaming or a GUI
+* config argument to specify the file containing RON-serialized parameters
+* volume/rpm/length arguments to control master volume/engine rpm/recording length
+* crossfade argument which cuts the recording in half, swaps the halves and fades the middle for x seconds (reduces output length by x/2 seconds), used to make seamless loops
+* warmup time argument to wait for the resonances in the acoustic chambers to be established before recording
 
 ## Building ##
 
