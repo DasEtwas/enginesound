@@ -215,16 +215,16 @@ impl Generator {
         self.recording_currently_clipping = false;
         self.waveguides_dampened = false;
 
-        let inc = self.get_rpm() / samples_per_second;
+        let inc = self.engine.rpm / samples_per_second;
 
         buf.iter_mut().for_each(|sample| {
             self.engine.crankshaft_pos = (self.engine.crankshaft_pos + inc).fract();
 
             let channels = self.gen();
-            let mixed = (channels.0 * self.get_intake_volume()
-                + channels.1 * self.get_engine_vibrations_volume()
-                + channels.2 * self.get_exhaust_volume())
-                * self.get_volume();
+            let mixed = (channels.0 * self.engine.intake_volume
+                + channels.1 * self.engine.engine_vibrations_volume
+                + channels.2 * self.engine.exhaust_volume)
+                * self.volume;
             self.waveguides_dampened |= channels.3;
 
             // reduces dc offset
@@ -348,57 +348,7 @@ impl Generator {
         self.engine.intake_collector = 0.0;
     }
 
-    #[inline]
-    pub fn get_rpm(&self) -> f32 {
-        self.engine.rpm
-    }
-
-    #[inline]
-    pub fn set_rpm(&mut self, rpm: f32) {
-        self.engine.rpm = rpm;
-    }
-
-    #[inline]
-    pub fn set_volume(&mut self, volume: f32) {
-        self.volume = volume;
-    }
-
-    #[inline]
-    pub fn get_volume(&self) -> f32 {
-        self.volume
-    }
-
-    #[inline]
-    pub fn set_intake_volume(&mut self, intake_volume: f32) {
-        self.engine.intake_volume = intake_volume;
-    }
-
-    #[inline]
-    pub fn get_intake_volume(&self) -> f32 {
-        self.engine.intake_volume
-    }
-
-    #[inline]
-    pub fn set_exhaust_volume(&mut self, exhaust_volume: f32) {
-        self.engine.exhaust_volume = exhaust_volume;
-    }
-
-    #[inline]
-    pub fn get_exhaust_volume(&self) -> f32 {
-        self.engine.exhaust_volume
-    }
-
-    #[inline]
-    pub fn set_engine_vibrations_volume(&mut self, engine_vibrations_volume: f32) {
-        self.engine.engine_vibrations_volume = engine_vibrations_volume;
-    }
-
-    #[inline]
-    pub fn get_engine_vibrations_volume(&self) -> f32 {
-        self.engine.engine_vibrations_volume
-    }
-
-    /// generates one sample worth of data
+    /// generates one sample worth of audio
     /// returns  `(intake, engine vibrations, exhaust, waveguides dampened)`
     fn gen(&mut self) -> (f32, f32, f32, bool) {
         let intake_noise = self

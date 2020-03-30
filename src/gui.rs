@@ -398,7 +398,7 @@ pub fn gui(
         }
 
         {
-            let prev_val = generator.get_rpm();
+            let prev_val = generator.engine.rpm;
             if let Some(value) = widget::Slider::new(prev_val, 300.0, 13000.0)
                 .label(format!("Engine RPM {:.2} ({:.1} hz)", prev_val, prev_val / 60.0).as_str())
                 .label_font_size(LABEL_FONT_SIZE)
@@ -407,7 +407,7 @@ pub fn gui(
                 .down(DOWN_SPACE)
                 .set(ids.engine_rpm_slider, ui)
             {
-                generator.set_rpm(value);
+                generator.engine.rpm = value;
             }
         }
 
@@ -417,7 +417,7 @@ pub fn gui(
 
         {
             {
-                let prev_val = generator.get_volume();
+                let prev_val = generator.volume;
                 if let Some(value) = widget::Slider::new(prev_val, 0.0, 3.0)
                     .label(format!("Master volume {:.0}%", prev_val * 100.0).as_str())
                     .label_font_size(LABEL_FONT_SIZE)
@@ -425,12 +425,12 @@ pub fn gui(
                     .down(DOWN_SPACE)
                     .set(ids.engine_master_volume_slider, ui)
                 {
-                    generator.set_volume(value);
+                    generator.volume = value;
                 }
             }
 
             {
-                let prev_val = generator.get_intake_volume();
+                let prev_val = generator.engine.intake_volume;
                 if let Some(value) = widget::Slider::new(prev_val, 0.0, 1.0)
                     .label(format!("Intake volume {:.0}%", prev_val * 100.0).as_str())
                     .label_font_size(LABEL_FONT_SIZE)
@@ -439,25 +439,25 @@ pub fn gui(
                     .set(ids.engine_intake_volume_slider, ui)
                 {
                     let mut dif = value - prev_val;
-                    generator.set_intake_volume(value);
-                    let v1 = generator.get_exhaust_volume();
-                    let v2 = generator.get_engine_vibrations_volume();
+                    generator.engine.intake_volume = value;
+                    let v1 = generator.engine.exhaust_volume;
+                    let v2 = generator.engine.engine_vibrations_volume;
                     if v1 < v2 {
                         let vv1 = v1.min(dif * 0.5);
                         dif -= vv1;
-                        generator.set_exhaust_volume((v1 - vv1).min(1.0).max(0.0));
-                        generator.set_engine_vibrations_volume((v2 - dif).min(1.0).max(0.0));
+                        generator.engine.exhaust_volume = ((v1 - vv1).min(1.0).max(0.0));
+                        generator.engine.engine_vibrations_volume = (v2 - dif).min(1.0).max(0.0);
                     } else {
                         let vv2 = v2.min(dif * 0.5);
                         dif -= vv2;
-                        generator.set_engine_vibrations_volume((v2 - vv2).min(1.0).max(0.0));
-                        generator.set_exhaust_volume((v1 - dif).min(1.0).max(0.0));
+                        generator.engine.engine_vibrations_volume = (v2 - vv2).min(1.0).max(0.0);
+                        generator.engine.exhaust_volume = ((v1 - dif).min(1.0).max(0.0));
                     }
                 }
             }
 
             {
-                let prev_val = generator.get_exhaust_volume();
+                let prev_val = generator.engine.exhaust_volume;
                 if let Some(value) = widget::Slider::new(prev_val, 0.0, 1.0)
                     .label(format!("Exhaust volume {:.0}%", prev_val * 100.0).as_str())
                     .label_font_size(LABEL_FONT_SIZE)
@@ -466,25 +466,25 @@ pub fn gui(
                     .set(ids.engine_exhaust_volume_slider, ui)
                 {
                     let mut dif = value - prev_val;
-                    generator.set_exhaust_volume(value);
-                    let v1 = generator.get_intake_volume();
-                    let v2 = generator.get_engine_vibrations_volume();
+                    generator.engine.exhaust_volume = (value);
+                    let v1 = generator.engine.intake_volume;
+                    let v2 = generator.engine.engine_vibrations_volume;
                     if v1 < v2 {
                         let vv1 = v1.min(dif * 0.5);
                         dif -= vv1;
-                        generator.set_intake_volume((v1 - vv1).min(1.0).max(0.0));
-                        generator.set_engine_vibrations_volume((v2 - dif).min(1.0).max(0.0));
+                        generator.engine.intake_volume = ((v1 - vv1).min(1.0).max(0.0));
+                        generator.engine.engine_vibrations_volume = ((v2 - dif).min(1.0).max(0.0));
                     } else {
                         let vv2 = v2.min(dif * 0.5);
                         dif -= vv2;
-                        generator.set_engine_vibrations_volume((v2 - vv2).min(1.0).max(0.0));
-                        generator.set_intake_volume((v1 - dif).min(1.0).max(0.0));
+                        generator.engine.engine_vibrations_volume = ((v2 - vv2).min(1.0).max(0.0));
+                        generator.engine.intake_volume = ((v1 - dif).min(1.0).max(0.0));
                     }
                 }
             }
 
             {
-                let prev_val = generator.get_engine_vibrations_volume();
+                let prev_val = generator.engine.engine_vibrations_volume;
                 if let Some(value) = widget::Slider::new(prev_val, 0.0, 1.0)
                     .label(format!("Engine vibrations volume {:.0}%", prev_val * 100.0).as_str())
                     .label_font_size(LABEL_FONT_SIZE)
@@ -493,32 +493,32 @@ pub fn gui(
                     .set(ids.engine_engine_vibrations_volume_slider, ui)
                 {
                     let mut dif = value - prev_val;
-                    generator.set_engine_vibrations_volume(value);
-                    let v1 = generator.get_exhaust_volume();
-                    let v2 = generator.get_intake_volume();
+                    generator.engine.engine_vibrations_volume = (value);
+                    let v1 = generator.engine.exhaust_volume;
+                    let v2 = generator.engine.intake_volume;
                     if v1 < v2 {
                         let vv1 = v1.min(dif * 0.5);
                         dif -= vv1;
-                        generator.set_exhaust_volume((v1 - vv1).min(1.0).max(0.0));
-                        generator.set_intake_volume((v2 - dif).min(1.0).max(0.0));
+                        generator.engine.exhaust_volume = ((v1 - vv1).min(1.0).max(0.0));
+                        generator.engine.intake_volume = ((v2 - dif).min(1.0).max(0.0));
                     } else {
                         let vv2 = v2.min(dif * 0.5);
                         dif -= vv2;
-                        generator.set_intake_volume((v2 - vv2).min(1.0).max(0.0));
-                        generator.set_exhaust_volume((v1 - dif).min(1.0).max(0.0));
+                        generator.engine.intake_volume = ((v2 - vv2).min(1.0).max(0.0));
+                        generator.engine.exhaust_volume = ((v1 - dif).min(1.0).max(0.0));
                     }
                 }
             }
 
             // normalize again to mitigate any floating point error
             {
-                let iv = generator.get_intake_volume();
-                let ev = generator.get_exhaust_volume();
-                let evv = generator.get_engine_vibrations_volume();
+                let iv = generator.engine.intake_volume;
+                let ev = generator.engine.exhaust_volume;
+                let evv = generator.engine.engine_vibrations_volume;
                 let sum = iv + ev + evv;
-                generator.set_intake_volume(iv / sum);
-                generator.set_exhaust_volume(ev / sum);
-                generator.set_engine_vibrations_volume(evv / sum);
+                generator.engine.intake_volume = (iv / sum);
+                generator.engine.exhaust_volume = (ev / sum);
+                generator.engine.engine_vibrations_volume = (evv / sum);
             }
         }
 

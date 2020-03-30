@@ -8,6 +8,10 @@ GUI Application used to generate purely synthetic engine sounds with advanced op
 It features real-time recording of the engine, a CLI, automatic crossfading to create seamless loops in the CLI, realtime frequency domain display through FFT, and preset saving/loading capabilities.
 """
 
+[features]
+default = ["gui"]
+gui = ["glium", "conrod_core", "conrod_glium", "conrod_winit"]
+
 [dependencies]
 # recording #
 hound = "3.4.0"
@@ -23,10 +27,10 @@ parking_lot = "0.10.0"
 anyhow = "1.0.26"
 
 # gui #
-glium = "0.23.0"
-conrod_core = "0.63.0"
-conrod_glium = "0.63.0"
-conrod_winit = "0.63.0"
+glium = { version = "0.23.0", optional = true }
+conrod_core = { version = "0.63.0", optional = true }
+conrod_glium = { version = "0.63.0", optional = true }
+conrod_winit = { version = "0.63.0", optional = true }
 
 # fft #
 num-traits = "0.2.11"
@@ -42,11 +46,6 @@ paste = "0.1.4"
 
 # cli #
 clap = "2.33.0"
-
-[profile.release]
-debug = true
-#lto = true
-#codegen-units = 1
 
 [dev-dependencies]
 criterion = "0.3"
