@@ -1,6 +1,7 @@
 use crate::constants::{MAX_CYLINDERS, MUFFLER_ELEMENT_COUNT};
 use crate::utils::{distance_to_samples, samples_to_distance, SPEED_OF_SOUND};
 use crate::{gen::Generator, recorder::Recorder};
+use biquad::Type;
 use chrono::{Datelike, Local, Timelike};
 use conrod_core::{
     position::{Align, Direction, Padding, Relative},
@@ -445,13 +446,13 @@ pub fn gui(
                     if v1 < v2 {
                         let vv1 = v1.min(dif * 0.5);
                         dif -= vv1;
-                        generator.engine.exhaust_volume = ((v1 - vv1).min(1.0).max(0.0));
+                        generator.engine.exhaust_volume = (v1 - vv1).min(1.0).max(0.0);
                         generator.engine.engine_vibrations_volume = (v2 - dif).min(1.0).max(0.0);
                     } else {
                         let vv2 = v2.min(dif * 0.5);
                         dif -= vv2;
                         generator.engine.engine_vibrations_volume = (v2 - vv2).min(1.0).max(0.0);
-                        generator.engine.exhaust_volume = ((v1 - dif).min(1.0).max(0.0));
+                        generator.engine.exhaust_volume = (v1 - dif).min(1.0).max(0.0);
                     }
                 }
             }
@@ -466,19 +467,19 @@ pub fn gui(
                     .set(ids.engine_exhaust_volume_slider, ui)
                 {
                     let mut dif = value - prev_val;
-                    generator.engine.exhaust_volume = (value);
+                    generator.engine.exhaust_volume = value;
                     let v1 = generator.engine.intake_volume;
                     let v2 = generator.engine.engine_vibrations_volume;
                     if v1 < v2 {
                         let vv1 = v1.min(dif * 0.5);
                         dif -= vv1;
-                        generator.engine.intake_volume = ((v1 - vv1).min(1.0).max(0.0));
-                        generator.engine.engine_vibrations_volume = ((v2 - dif).min(1.0).max(0.0));
+                        generator.engine.intake_volume = (v1 - vv1).min(1.0).max(0.0);
+                        generator.engine.engine_vibrations_volume = (v2 - dif).min(1.0).max(0.0);
                     } else {
                         let vv2 = v2.min(dif * 0.5);
                         dif -= vv2;
-                        generator.engine.engine_vibrations_volume = ((v2 - vv2).min(1.0).max(0.0));
-                        generator.engine.intake_volume = ((v1 - dif).min(1.0).max(0.0));
+                        generator.engine.engine_vibrations_volume = (v2 - vv2).min(1.0).max(0.0);
+                        generator.engine.intake_volume = (v1 - dif).min(1.0).max(0.0);
                     }
                 }
             }
@@ -493,19 +494,19 @@ pub fn gui(
                     .set(ids.engine_engine_vibrations_volume_slider, ui)
                 {
                     let mut dif = value - prev_val;
-                    generator.engine.engine_vibrations_volume = (value);
+                    generator.engine.engine_vibrations_volume = value;
                     let v1 = generator.engine.exhaust_volume;
                     let v2 = generator.engine.intake_volume;
                     if v1 < v2 {
                         let vv1 = v1.min(dif * 0.5);
                         dif -= vv1;
-                        generator.engine.exhaust_volume = ((v1 - vv1).min(1.0).max(0.0));
-                        generator.engine.intake_volume = ((v2 - dif).min(1.0).max(0.0));
+                        generator.engine.exhaust_volume = (v1 - vv1).min(1.0).max(0.0);
+                        generator.engine.intake_volume = (v2 - dif).min(1.0).max(0.0);
                     } else {
                         let vv2 = v2.min(dif * 0.5);
                         dif -= vv2;
-                        generator.engine.intake_volume = ((v2 - vv2).min(1.0).max(0.0));
-                        generator.engine.exhaust_volume = ((v1 - dif).min(1.0).max(0.0));
+                        generator.engine.intake_volume = (v2 - vv2).min(1.0).max(0.0);
+                        generator.engine.exhaust_volume = (v1 - dif).min(1.0).max(0.0);
                     }
                 }
             }
@@ -516,9 +517,9 @@ pub fn gui(
                 let ev = generator.engine.exhaust_volume;
                 let evv = generator.engine.engine_vibrations_volume;
                 let sum = iv + ev + evv;
-                generator.engine.intake_volume = (iv / sum);
-                generator.engine.exhaust_volume = (ev / sum);
-                generator.engine.engine_vibrations_volume = (evv / sum);
+                generator.engine.intake_volume = iv / sum;
+                generator.engine.exhaust_volume = ev / sum;
+                generator.engine.engine_vibrations_volume = evv / sum;
             }
         }
 
@@ -532,11 +533,8 @@ pub fn gui(
             // engine_vibrations_lowpassfilter_freq
             {
                 const MIN: f32 = 10.0;
-                let max: f32 = sample_rate as f32;
-                let prev_val = generator
-                    .engine
-                    .engine_vibration_filter
-                    .get_freq(sample_rate);
+                let max: f32 = sample_rate as f32 * 0.5;
+                let prev_val = generator.engine.engine_vibration_filter.get_freq();
                 if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(
                         format!(
@@ -551,10 +549,11 @@ pub fn gui(
                     .skew(10.0)
                     .set(ids.engine_vibrations_lp_filter_freq, ui)
                 {
-                    let new = generator
-                        .engine
-                        .engine_vibration_filter
-                        .get_changed(value, sample_rate);
+                    let new = generator.engine.engine_vibration_filter.get_changed(
+                        value,
+                        sample_rate,
+                        Type::LowPass,
+                    );
 
                     if let Some(new) = new {
                         generator.engine.engine_vibration_filter = new;
@@ -579,8 +578,8 @@ pub fn gui(
             // intake_noise_lowpassfilter_freq
             {
                 const MIN: f32 = 10.0;
-                let max: f32 = sample_rate as f32;
-                let prev_val = generator.engine.intake_noise_lp.get_freq(sample_rate);
+                let max: f32 = sample_rate as f32 * 0.5;
+                let prev_val = generator.engine.intake_noise_lp.get_freq();
                 if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(
                         format!("Intake noise Lowpass-Filter Frequency {:.2}hz", prev_val).as_str(),
@@ -591,10 +590,11 @@ pub fn gui(
                     .skew(10.0)
                     .set(ids.engine_intake_lp_filter_freq, ui)
                 {
-                    let new = generator
-                        .engine
-                        .intake_noise_lp
-                        .get_changed(value, sample_rate);
+                    let new = generator.engine.intake_noise_lp.get_changed(
+                        value,
+                        sample_rate,
+                        Type::LowPass,
+                    );
 
                     if let Some(new) = new {
                         generator.engine.intake_noise_lp = new;
@@ -651,11 +651,8 @@ pub fn gui(
             // crankshaft_fluctuation_lowpassfilter_freq
             {
                 const MIN: f32 = 10.0;
-                let max: f32 = sample_rate as f32;
-                let prev_val = generator
-                    .engine
-                    .crankshaft_fluctuation_lp
-                    .get_freq(sample_rate);
+                let max: f32 = sample_rate as f32 * 0.5;
+                let prev_val = generator.engine.crankshaft_fluctuation_lp.get_freq();
                 if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                     .label(
                         format!(
@@ -670,10 +667,11 @@ pub fn gui(
                     .skew(10.0)
                     .set(ids.engine_crankshaft_fluctuation_lp_freq, ui)
                 {
-                    let new = generator
-                        .engine
-                        .crankshaft_fluctuation_lp
-                        .get_changed(value, sample_rate);
+                    let new = generator.engine.crankshaft_fluctuation_lp.get_changed(
+                        value,
+                        sample_rate,
+                        Type::LowPass,
+                    );
 
                     if let Some(new) = new {
                         generator.engine.crankshaft_fluctuation_lp = new;
@@ -729,7 +727,14 @@ pub fn gui(
             {
                 const MIN: f32 = 0.1;
                 let max: f32 = 3.0;
-                let prev_val = generator.engine.muffler.straight_pipe.chamber0.samples.len as f32
+                let prev_val = generator
+                    .engine
+                    .muffler
+                    .straight_pipe
+                    .chamber0
+                    .samples
+                    .data
+                    .len() as f32
                     * SPEED_OF_SOUND
                     / sample_rate as f32;
                 if let Some(value) = widget::Slider::new(prev_val, MIN, max)
@@ -796,8 +801,10 @@ pub fn gui(
                 {
                     const MIN: f32 = 0.001;
                     let max: f32 = 0.6;
-                    let prev_val =
-                        samples_to_distance(muffler_element.chamber0.samples.len, sample_rate);
+                    let prev_val = samples_to_distance(
+                        muffler_element.chamber0.samples.data.len(),
+                        sample_rate,
+                    );
                     if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                         .label(
                             format!(
@@ -1086,8 +1093,10 @@ pub fn gui(
                 {
                     const MIN: f32 = 0.0;
                     let max: f32 = 1.0;
-                    let prev_val =
-                        samples_to_distance(cyl.intake_waveguide.chamber0.samples.len, sample_rate);
+                    let prev_val = samples_to_distance(
+                        cyl.intake_waveguide.chamber0.samples.data.len(),
+                        sample_rate,
+                    );
                     if let Some(value) = widget::Slider::new(prev_val, MIN, max)
                         .label(
                             format!("{} / Intake-cavity length {:.2}m", i + 1, prev_val).as_str(),
@@ -1114,7 +1123,7 @@ pub fn gui(
                     const MIN: f32 = 0.0;
                     let max: f32 = 1.7;
                     let prev_val = samples_to_distance(
-                        cyl.exhaust_waveguide.chamber0.samples.len,
+                        cyl.exhaust_waveguide.chamber0.samples.data.len(),
                         sample_rate,
                     );
                     if let Some(value) = widget::Slider::new(prev_val, MIN, max)
@@ -1143,7 +1152,7 @@ pub fn gui(
                     const MIN: f32 = 0.0;
                     let max: f32 = 10.0;
                     let prev_val = samples_to_distance(
-                        cyl.extractor_waveguide.chamber0.samples.len,
+                        cyl.extractor_waveguide.chamber0.samples.data.len(),
                         sample_rate,
                     );
                     if let Some(value) = widget::Slider::new(prev_val, MIN, max)

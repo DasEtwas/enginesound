@@ -7,17 +7,10 @@
 
 use crate::recorder::Recorder;
 
-#[allow(unused_imports)]
-#[cfg(target_arch = "x86")]
-use std::arch::x86::*;
-#[allow(unused_imports)]
-#[cfg(target_arch = "x86_64")]
-use std::arch::x86_64::*;
-
+use biquad::{Biquad, Coefficients, DirectForm2Transposed, Hertz, Type};
 use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use serde::{Deserialize, Serialize};
-use simdeez::{avx2::*, scalar::*, sse2::*, sse41::*, *};
 use std::time::SystemTime;
 
 pub const PI2F: f32 = 2.0 * std::f32::consts::PI;
@@ -245,89 +238,22 @@ impl Generator {
 
     pub fn reset(&mut self) {
         for cyl in self.engine.cylinders.iter_mut() {
-            cyl.exhaust_waveguide
-                .chamber0
-                .samples
-                .data
-                .iter_mut()
-                .for_each(|sample| *sample = 0.0);
-            cyl.exhaust_waveguide
-                .chamber1
-                .samples
-                .data
-                .iter_mut()
-                .for_each(|sample| *sample = 0.0);
-            cyl.intake_waveguide
-                .chamber0
-                .samples
-                .data
-                .iter_mut()
-                .for_each(|sample| *sample = 0.0);
-            cyl.intake_waveguide
-                .chamber1
-                .samples
-                .data
-                .iter_mut()
-                .for_each(|sample| *sample = 0.0);
-            cyl.extractor_waveguide
-                .chamber0
-                .samples
-                .data
-                .iter_mut()
-                .for_each(|sample| *sample = 0.0);
-            cyl.extractor_waveguide
-                .chamber1
-                .samples
-                .data
-                .iter_mut()
-                .for_each(|sample| *sample = 0.0);
+            [
+                &mut cyl.exhaust_waveguide,
+                &mut cyl.intake_waveguide,
+                &mut cyl.extractor_waveguide,
+            ]
+            .iter_mut()
+            .flat_map(|x| vec![&mut x.chamber0, &mut x.chamber1])
+            .for_each(|chamber| chamber.samples.data.iter_mut().for_each(|x| *x = 0.0));
 
             cyl.extractor_exhaust = 0.0;
             cyl.cyl_sound = 0.0;
         }
 
-        self.engine
-            .muffler
-            .straight_pipe
-            .chamber0
-            .samples
-            .data
-            .iter_mut()
-            .for_each(|sample| *sample = 0.0);
-        self.engine
-            .muffler
-            .straight_pipe
-            .chamber1
-            .samples
-            .data
-            .iter_mut()
-            .for_each(|sample| *sample = 0.0);
-
-        self.engine
-            .engine_vibration_filter
-            .samples
-            .data
-            .iter_mut()
-            .for_each(|sample| *sample = 0.0);
-        self.engine
-            .engine_vibration_filter
-            .samples
-            .data
-            .iter_mut()
-            .for_each(|sample| *sample = 0.0);
-
-        self.engine
-            .crankshaft_fluctuation_lp
-            .samples
-            .data
-            .iter_mut()
-            .for_each(|sample| *sample = 0.0);
-        self.engine
-            .crankshaft_fluctuation_lp
-            .samples
-            .data
-            .iter_mut()
-            .for_each(|sample| *sample = 0.0);
+        std::iter::once(&mut self.engine.muffler.straight_pipe)
+            .flat_map(|x| vec![&mut x.chamber0, &mut x.chamber1])
+            .for_each(|chamber| chamber.samples.data.iter_mut().for_each(|x| *x = 0.0));
 
         for muffler_element in self.engine.muffler.muffler_elements.iter_mut() {
             muffler_element
@@ -516,7 +442,7 @@ impl WaveGuide {
         samples_per_second: u32,
     ) -> Option<Self> {
         // the strictly compared values will never change without user interaction (adjusting sliders)
-        if delay != self.chamber0.samples.len || alpha != self.alpha || beta != self.beta {
+        if delay != self.chamber0.samples.data.len() || alpha != self.alpha || beta != self.beta {
             let mut new = Self::new(delay, alpha, beta, samples_per_second);
 
             // used to reduce artifacts while resizing pipes _a bit_
@@ -547,8 +473,6 @@ pub struct LoopBuffer {
     // in seconds
     pub delay: f32,
     #[serde(skip)]
-    pub len: usize,
-    #[serde(skip)]
     pub data: Vec<f32>,
     #[serde(skip)]
     pub pos: usize,
@@ -558,32 +482,15 @@ impl LoopBuffer {
     /// Creates a new loop buffer with specifies length.
     /// The internal sample buffer size is rounded up to the currently best SIMD implementation's float vector size.
     pub fn new(len: usize, samples_per_second: u32) -> LoopBuffer {
-        let bufsize = LoopBuffer::get_best_simd_size(len);
         LoopBuffer {
             delay: len as f32 / samples_per_second as f32,
-            len,
-            data: vec![0.0; bufsize],
+            data: vec![0.0; len],
             pos: 0,
-        }
-    }
-
-    /// Returns `(size / SIMD_REGISTER_SIZE).ceil() * SIMD_REGISTER_SIZE`, where `SIMD` may be the best simd implementation at runtime.
-    /// Used to create vectors to make simd iteration easier
-    pub fn get_best_simd_size(size: usize) -> usize {
-        if is_x86_feature_detected!("avx2") {
-            ((size - 1) / Avx2::VF32_WIDTH + 1) * Avx2::VF32_WIDTH
-        } else if is_x86_feature_detected!("sse4.1") {
-            ((size - 1) / Sse41::VF32_WIDTH + 1) * Sse41::VF32_WIDTH
-        } else if is_x86_feature_detected!("sse2") {
-            ((size - 1) / Sse2::VF32_WIDTH + 1) * Sse2::VF32_WIDTH
-        } else {
-            ((size - 1) / Scalar::VF32_WIDTH + 1) * Scalar::VF32_WIDTH
         }
     }
 
     /// Sets the value at the current position. Must be called with `pop`.
     /// ```rust
-    /// // assuming Simd is Scalar
     /// let mut lb = LoopBuffer::new(2);
     /// lb.push(1.0);
     /// lb.advance();
@@ -592,14 +499,14 @@ impl LoopBuffer {
     ///
     /// ```
     pub fn push(&mut self, value: f32) {
-        let len = self.len;
+        let len = self.data.len();
         self.data[self.pos % len] = value;
     }
 
     /// Gets the value `self.len` samples prior. Must be called with `push`.
     /// See `push` for examples
     pub fn pop(&mut self) -> f32 {
-        let len = self.len;
+        let len = self.data.len();
         self.data[(self.pos + 1) % len]
     }
 
@@ -611,103 +518,51 @@ impl LoopBuffer {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct LowPassFilter {
+    /// 1 / cutoff frequency
     pub delay: f32,
-    #[serde(skip)]
-    pub len: f32,
-    #[serde(skip)]
-    pub samples: LoopBuffer,
+    #[serde(skip, default = "default_filter")]
+    pub filter: DirectForm2Transposed<f32>,
+}
+
+fn default_filter() -> DirectForm2Transposed<f32> {
+    DirectForm2Transposed::<f32>::new(
+        Coefficients::<f32>::from_params(
+            Type::LowPass,
+            Hertz::<f32>::from_hz(3.0).unwrap(),
+            Hertz::<f32>::from_hz(1.0).unwrap(),
+            1.0,
+        )
+        .unwrap(),
+    )
 }
 
 impl LowPassFilter {
-    pub fn new(freq: f32, samples_per_second: u32) -> LowPassFilter {
-        let len = (samples_per_second as f32 / freq)
-            .min(samples_per_second as f32)
-            .max(1.0);
+    pub fn new(freq: f32, samples_per_second: u32, type_: biquad::Type) -> LowPassFilter {
         LowPassFilter {
-            samples: LoopBuffer::new(len.ceil() as usize, samples_per_second),
             delay: 1.0 / freq,
-            len,
+            filter: DirectForm2Transposed::<f32>::new(
+                Coefficients::<f32>::from_params(
+                    type_,
+                    Hertz::<f32>::from_hz(samples_per_second as f32).unwrap(),
+                    Hertz::<f32>::from_hz(freq.min(samples_per_second as f32 * 0.5)).unwrap(),
+                    10.0,
+                )
+                .unwrap(),
+            ),
         }
     }
 
     #[inline]
-    pub fn get_freq(&self, samples_per_second: u32) -> f32 {
-        samples_per_second as f32 / self.len
+    pub fn get_freq(&self) -> f32 {
+        1.0 / self.delay
     }
 
     pub fn filter(&mut self, sample: f32) -> f32 {
-        if self.len == 0.0 {
-            self.len = self.samples.len as f32;
-        }
-
-        self.samples.push(sample);
-        self.samples.advance();
-
-        #[inline(always)]
-        unsafe fn sum<S: Simd>(samples: &[f32], flen: f32) -> f32 {
-            let mut i = S::VF32_WIDTH;
-            let len = samples.len();
-            assert_eq!(
-                len % S::VF32_WIDTH,
-                0,
-                "LoopBuffer length is not a multiple of the SIMD vector size"
-            );
-
-            // rolling sum
-            let mut rolling_sum = S::loadu_ps(&samples[0]);
-
-            while i != len {
-                rolling_sum += S::loadu_ps(&samples[i]);
-                i += S::VF32_WIDTH;
-            }
-
-            let fract = flen.fract();
-            // only use fractional averaging if flen.fract() > 0.0
-            if fract != 0.0 {
-                // subtract the last element and add it onto the sum again but multiplied with the fractional part of the length
-                (S::horizontal_add_ps(rolling_sum) - samples[flen as usize] * (1.0 - fract)) / flen
-            } else {
-                // normal average
-                S::horizontal_add_ps(rolling_sum) / flen
-            }
-        }
-
-        // expanded 'simd_runtime_select' macro for feature independency (proc_macro_hygiene)
-        if is_x86_feature_detected!("avx2") {
-            #[target_feature(enable = "avx2")]
-            unsafe fn call(samples: &[f32], len: f32) -> f32 {
-                sum::<Avx2>(samples, len)
-            }
-            unsafe { call(&self.samples.data, self.len) }
-        } else if is_x86_feature_detected!("sse4.1") {
-            #[target_feature(enable = "sse4.1")]
-            unsafe fn call(samples: &[f32], len: f32) -> f32 {
-                sum::<Sse41>(samples, len)
-            }
-            unsafe { call(&self.samples.data, self.len) }
-        } else if is_x86_feature_detected!("sse2") {
-            #[target_feature(enable = "sse2")]
-            unsafe fn call(samples: &[f32], len: f32) -> f32 {
-                sum::<Sse2>(samples, len)
-            }
-            unsafe { call(&self.samples.data, self.len) }
-        } else {
-            unsafe { sum::<Scalar>(&self.samples.data, self.len) }
-        }
+        self.filter.run(sample)
     }
 
-    #[allow(clippy::float_cmp)]
-    pub fn get_changed(&mut self, freq: f32, samples_per_second: u32) -> Option<Self> {
-        let newfreq_len = (samples_per_second as f32 / freq)
-            .min(samples_per_second as f32)
-            .max(1.0);
-
-        // the strictly compared values will never change without user interaction (adjusting sliders)
-        if newfreq_len != self.len {
-            Some(Self::new(freq, samples_per_second))
-        } else {
-            None
-        }
+    pub fn get_changed(&mut self, freq: f32, samples_per_second: u32, type_: Type) -> Option<Self> {
+        Some(Self::new(freq, samples_per_second, type_))
     }
 }
 

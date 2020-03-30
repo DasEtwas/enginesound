@@ -1,5 +1,4 @@
 use crate::gen::{Engine, LoopBuffer, LowPassFilter};
-use anyhow::*;
 use std::fs::File;
 
 pub const SPEED_OF_SOUND: f32 = 343.0; // m/s
@@ -23,33 +22,30 @@ pub fn samples_to_distance(samples: usize, sample_rate: u32) -> f32 {
     samples_to_seconds(samples, sample_rate) * SPEED_OF_SOUND
 }
 
-pub fn load_engine(path: &str, sample_rate: u32) -> Result<Engine, anyhow::Error> {
+pub(crate) fn load_engine(path: &str, sample_rate: u32) -> Result<Engine, String> {
     match File::open(path) {
         Ok(file) => match ron::de::from_reader::<_, Engine>(file) {
             Ok(mut engine) => {
-                println!("Successfully loaded engine config \"{}\"", &path);
                 fix_engine(&mut engine, sample_rate);
                 Ok(engine)
             }
-            Err(e) => Err(anyhow!("Failed to load config \"{}\": {}", &path, e)),
+            Err(e) => Err(format!("Failed to load config \"{}\": {}", &path, e)),
         },
-        Err(e) => Err(anyhow!("Failed to open file \"{}\": {}", &path, e)),
+        Err(e) => Err(format!("Failed to open file \"{}\": {}", &path, e)),
     }
 }
 
 pub fn fix_engine(engine: &mut Engine, sample_rate: u32) {
     fn fix_lpf(lpf: &mut LowPassFilter, sample_rate: u32) {
-        *lpf = LowPassFilter::new(1.0 / lpf.delay, sample_rate);
+        *lpf = LowPassFilter::new(1.0 / lpf.delay, sample_rate, biquad::Type::LowPass);
     }
 
     fn fix_loop_buffer(lb: &mut LoopBuffer, sample_rate: u32) {
         let len = (lb.delay * sample_rate as f32) as usize;
-        let bufsize = LoopBuffer::get_best_simd_size(len);
 
         *lb = LoopBuffer {
             delay: lb.delay,
-            len,
-            data: vec![0.0; bufsize],
+            data: vec![0.0; len],
             pos: 0,
         };
     }

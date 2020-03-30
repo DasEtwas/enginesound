@@ -1,5 +1,4 @@
 use crate::audio::GENERATOR_BUFFER_SIZE;
-use crate::constants::DC_OFFSET_LP_FREQ;
 use crate::exactstreamer::ExactStreamer;
 use crate::fft::FFTStreamer;
 use crate::gen::LowPassFilter;
@@ -74,7 +73,7 @@ fn main() {
     let mut generator = gen::Generator::new(
         sample_rate,
         engine,
-        LowPassFilter::new(DC_OFFSET_LP_FREQ, sample_rate),
+        LowPassFilter::new(48000.0, sample_rate, biquad::Type::HighPass),
     );
 
     generator.volume = value_t!(matches.value_of("volume"), f32).unwrap();
@@ -212,6 +211,7 @@ fn main() {
                                 let path = path.to_str().unwrap_or("invalid UTF-8 in path");
                                 match crate::load_engine(path, sample_rate) {
                                     Ok(new_engine) => {
+                                        println!("Successfully loaded engine config \"{}\"", &path);
                                         generator.write().engine = new_engine;
                                     }
                                     Err(e) => {
