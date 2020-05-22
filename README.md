@@ -92,13 +92,6 @@ volume = 0.5                                  // 50%
 enginesound.exe -h -c config_file.esc -o output_file.wav -f $fade_length -l $length -w $warmup -r $rpm -v $volume
 ```
 
-## Packaging
-### Windows
-Just be sure that SDL2.dll is next to the .exe
-
-### Linux
-SDL2 will need to be installed to run
-
 ## Licensing
 
 MIT License
