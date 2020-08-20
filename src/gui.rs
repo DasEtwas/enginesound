@@ -159,11 +159,14 @@ impl GUIState {
         while let Ok(new_line) = self.input.try_recv() {
             let log_scale = (0..WATERFALL_WIDTH as usize)
                 .map(|i| {
-                    let new = (1.0 - (i + 1) as f32 / WATERFALL_WIDTH as f32).log2()
+                    let new = ((1.0 - (i + 1) as f32 / (WATERFALL_WIDTH + 1) as f32).log2()
                         / (WATERFALL_WIDTH as f32).recip().log2()
-                        * (WATERFALL_WIDTH - 1) as f32;
-                    new_line[(new.floor() as usize).saturating_sub(1)] * (1.0 - new.fract())
-                        + new_line[new.floor() as usize] * new.fract()
+                        * (WATERFALL_WIDTH - 1) as f32)
+                        .max(1e-3);
+
+                    let idx = new.floor() as usize;
+                    new_line[idx.saturating_sub(1)] * (1.0 - new.fract())
+                        + new_line[idx] * new.fract()
                 })
                 .collect::<Vec<f32>>();
             self.add_line(&log_scale);

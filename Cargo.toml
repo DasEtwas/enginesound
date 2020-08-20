@@ -12,6 +12,10 @@ It features real-time recording of the engine, a CLI, automatic crossfading to c
 default = ["gui"]
 gui = ["glium", "conrod_core", "conrod_glium", "conrod_winit"]
 
+[profile.release]
+debug = true
+lto = true
+
 [dependencies]
 # recording #
 hound = "3.4.0"
