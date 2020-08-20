@@ -8,7 +8,6 @@ loosely based on [this paper](https://www.researchgate.net/publication/280086598
 
 ## Features
 
-
 #### General ####
 * Variable engine parameters
 * Mono WAV recording
@@ -20,6 +19,7 @@ loosely based on [this paper](https://www.researchgate.net/publication/280086598
 * Resonance dampening (can save your audio equipement and ears)
 
 #### GUI specific
+* Compilation of the GUI is enabled by default ("gui" feature, use `--no-default-features` to disable)
 * GUI made with conrod/glium
 * Real-time preview of parameters with SDL2 audio streaming
 * Real-time interactive parameter sliders with small descriptions
