@@ -26,6 +26,8 @@ const WINDOW_HEIGHT: f64 = 800.0;
 
 const DEFAULT_CONFIG: &[u8] = include_bytes!("default.esc");
 
+conrod_winit::conversion_fns!();
+
 fn main() {
     let matches = App::new("Engine Sound Generator")
         .version(clap::crate_version!())
@@ -201,7 +203,7 @@ fn main() {
             'main: loop {
                 event_loop.needs_update();
                 for event in event_loop.next(&mut events_loop) {
-                    if let Some(event) = conrod_winit::convert_event(event.clone(), &display) {
+                    if let Some(event) = convert_event(event.clone(), &display) {
                         ui.handle_event(event);
                     }
 
