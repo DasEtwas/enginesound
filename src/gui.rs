@@ -1,7 +1,6 @@
 use crate::constants::{MAX_CYLINDERS, MUFFLER_ELEMENT_COUNT};
 use crate::utils::{distance_to_samples, samples_to_distance, SPEED_OF_SOUND};
 use crate::{gen::Generator, recorder::Recorder};
-use biquad::Type;
 use chrono::{Datelike, Local, Timelike};
 use conrod_core::{
     position::{Align, Direction, Padding, Relative},
@@ -552,11 +551,10 @@ pub fn gui(
                     .skew(10.0)
                     .set(ids.engine_vibrations_lp_filter_freq, ui)
                 {
-                    let new = generator.engine.engine_vibration_filter.get_changed(
-                        value,
-                        sample_rate,
-                        Type::LowPass,
-                    );
+                    let new = generator
+                        .engine
+                        .engine_vibration_filter
+                        .get_changed(value, sample_rate);
 
                     if let Some(new) = new {
                         generator.engine.engine_vibration_filter = new;
@@ -593,11 +591,10 @@ pub fn gui(
                     .skew(10.0)
                     .set(ids.engine_intake_lp_filter_freq, ui)
                 {
-                    let new = generator.engine.intake_noise_lp.get_changed(
-                        value,
-                        sample_rate,
-                        Type::LowPass,
-                    );
+                    let new = generator
+                        .engine
+                        .intake_noise_lp
+                        .get_changed(value, sample_rate);
 
                     if let Some(new) = new {
                         generator.engine.intake_noise_lp = new;
@@ -670,11 +667,10 @@ pub fn gui(
                     .skew(10.0)
                     .set(ids.engine_crankshaft_fluctuation_lp_freq, ui)
                 {
-                    let new = generator.engine.crankshaft_fluctuation_lp.get_changed(
-                        value,
-                        sample_rate,
-                        Type::LowPass,
-                    );
+                    let new = generator
+                        .engine
+                        .crankshaft_fluctuation_lp
+                        .get_changed(value, sample_rate);
 
                     if let Some(new) = new {
                         generator.engine.crankshaft_fluctuation_lp = new;

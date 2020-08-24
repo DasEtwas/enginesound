@@ -7,7 +7,6 @@
 
 use crate::recorder::Recorder;
 
-use biquad::{Biquad, Coefficients, DirectForm2Transposed, Hertz, Type};
 use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use serde::{Deserialize, Serialize};
@@ -516,39 +515,23 @@ impl LoopBuffer {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct LowPassFilter {
     /// 1 / cutoff frequency
     pub delay: f32,
-    #[serde(skip, default = "default_filter")]
-    pub filter: DirectForm2Transposed<f32>,
-}
-
-fn default_filter() -> DirectForm2Transposed<f32> {
-    DirectForm2Transposed::<f32>::new(
-        Coefficients::<f32>::from_params(
-            Type::LowPass,
-            Hertz::<f32>::from_hz(3.0).unwrap(),
-            Hertz::<f32>::from_hz(1.0).unwrap(),
-            1.0,
-        )
-        .unwrap(),
-    )
+    #[serde(skip)]
+    pub alpha: f32,
+    #[serde(skip)]
+    pub last: f32,
 }
 
 impl LowPassFilter {
-    pub fn new(freq: f32, samples_per_second: u32, type_: biquad::Type) -> LowPassFilter {
+    pub fn new(freq: f32, samples_per_second: u32) -> LowPassFilter {
         LowPassFilter {
             delay: 1.0 / freq,
-            filter: DirectForm2Transposed::<f32>::new(
-                Coefficients::<f32>::from_params(
-                    type_,
-                    Hertz::<f32>::from_hz(samples_per_second as f32).unwrap(),
-                    Hertz::<f32>::from_hz(freq.min(samples_per_second as f32 * 0.5)).unwrap(),
-                    10.0,
-                )
-                .unwrap(),
-            ),
+            alpha: (PI2F * (1.0 / samples_per_second as f32) * freq)
+                / (PI2F * (1.0 / samples_per_second as f32) * freq + 1.0),
+            last: 0.0,
         }
     }
 
@@ -558,11 +541,13 @@ impl LowPassFilter {
     }
 
     pub fn filter(&mut self, sample: f32) -> f32 {
-        self.filter.run(sample)
+        let ret = (sample - self.last).mul_add(self.alpha, self.last);
+        self.last = ret;
+        ret
     }
 
-    pub fn get_changed(&mut self, freq: f32, samples_per_second: u32, type_: Type) -> Option<Self> {
-        Some(Self::new(freq, samples_per_second, type_))
+    pub fn get_changed(&mut self, freq: f32, samples_per_second: u32) -> Option<Self> {
+        Some(Self::new(freq, samples_per_second))
     }
 }
 

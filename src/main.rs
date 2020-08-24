@@ -70,11 +70,8 @@ fn main() {
     let cli_mode = matches.is_present("headless");
 
     // sound generator
-    let mut generator = gen::Generator::new(
-        sample_rate,
-        engine,
-        LowPassFilter::new(48000.0, sample_rate, biquad::Type::HighPass),
-    );
+    let mut generator =
+        gen::Generator::new(sample_rate, engine, LowPassFilter::new(0.5, sample_rate));
 
     generator.volume = value_t!(matches.value_of("volume"), f32).unwrap();
 

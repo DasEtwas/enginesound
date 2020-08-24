@@ -37,7 +37,7 @@ pub(crate) fn load_engine(path: &str, sample_rate: u32) -> Result<Engine, String
 
 pub fn fix_engine(engine: &mut Engine, sample_rate: u32) {
     fn fix_lpf(lpf: &mut LowPassFilter, sample_rate: u32) {
-        *lpf = LowPassFilter::new(1.0 / lpf.delay, sample_rate, biquad::Type::LowPass);
+        *lpf = LowPassFilter::new(1.0 / lpf.delay, sample_rate);
     }
 
     fn fix_loop_buffer(lb: &mut LoopBuffer, sample_rate: u32) {

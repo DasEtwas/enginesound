@@ -45,7 +45,6 @@ rand_core = "0.5.1"
 rand_xorshift ="0.2.0"
 cpal = "0.11.0"
 paste = "0.1.4"
-biquad = "0.3.0"
 
 # cli #
 clap = "2.33.0"
