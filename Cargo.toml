@@ -30,10 +30,11 @@ ron = "0.5.1"
 parking_lot = "0.10.0"
 
 # gui #
-glium = { version = "0.23.0", optional = true }
-conrod_core = { version = "0.63.0", optional = true }
-conrod_glium = { version = "0.63.0", optional = true }
-conrod_winit = { version = "0.63.0", optional = true }
+glium = { version = "0.24.0", optional = true }
+conrod_core = { version = "0.66.0", optional = true }
+conrod_glium = { version = "0.66.0", optional = true }
+conrod_winit = { version = "0.66.0", optional = true }
+winit = "0.19.5"
 
 # fft #
 num-traits = "0.2.11"
