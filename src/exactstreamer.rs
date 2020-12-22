@@ -1,7 +1,7 @@
 pub struct ExactStreamer<T> {
     remainder: Vec<T>,
     remainder_len: usize,
-    receiver: crossbeam::Receiver<Vec<T>>,
+    receiver: crossbeam_channel::Receiver<Vec<T>>,
 }
 
 impl<T> ExactStreamer<T>
@@ -10,7 +10,7 @@ where
 {
     pub fn new(
         remainder_buffer_size: usize,
-        receiver: crossbeam::Receiver<Vec<T>>,
+        receiver: crossbeam_channel::Receiver<Vec<T>>,
     ) -> ExactStreamer<T> {
         ExactStreamer {
             remainder: vec![T::default(); remainder_buffer_size],
@@ -19,7 +19,7 @@ where
         }
     }
 
-    pub fn fill(&mut self, out: &mut [T]) -> Result<(), crossbeam::crossbeam_channel::RecvError> {
+    pub fn fill(&mut self, out: &mut [T]) -> Result<(), crossbeam_channel::RecvError> {
         let mut i = self.remainder_len.min(out.len());
 
         out[..i].copy_from_slice(&self.remainder[..i]);

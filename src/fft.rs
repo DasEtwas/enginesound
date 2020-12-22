@@ -7,14 +7,14 @@ use std::time::Instant;
 pub struct FFTStreamer {
     size: usize,
     stream: ExactStreamer<f32>,
-    sender: crossbeam::Sender<Vec<f32>>,
+    sender: crossbeam_channel::Sender<Vec<f32>>,
 }
 
 impl FFTStreamer {
     pub fn new(
         size: usize,
         stream: ExactStreamer<f32>,
-        sender: crossbeam::Sender<Vec<f32>>,
+        sender: crossbeam_channel::Sender<Vec<f32>>,
     ) -> Self {
         FFTStreamer {
             size,

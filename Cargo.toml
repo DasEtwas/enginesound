@@ -19,33 +19,33 @@ lto = true
 [dependencies]
 # recording #
 hound = "3.4.0"
-crossbeam = "0.7.3"
-chrono = "0.4.10"
+crossbeam-channel = "0.5.0"
+chrono = "0.4.19"
 
 # saving presets #
-serde = { version = "1.0.90", features = ["derive"] }
-ron = "0.5.1"
+serde = { version = "1.0.118", features = ["derive"] }
+ron = "0.6.4"
 
 # misc #
-parking_lot = "0.10.0"
+parking_lot = "0.11.1"
 
 # gui #
-glium = { version = "0.24.0", optional = true }
-conrod_core = { version = "0.66.0", optional = true }
-conrod_glium = { version = "0.66.0", optional = true }
-conrod_winit = { version = "0.66.0", optional = true }
-winit = "0.19.5"
+glium = { version = "0.28.0", optional = true }
+conrod_core = { version = "0.71.0", optional = true }
+conrod_glium = { version = "0.71.0", optional = true }
+conrod_winit = { version = "0.71.0", optional = true }
+winit = "0.23.0"
 
 # fft #
-num-traits = "0.2.11"
-num-complex = "0.2.4"
-rustfft = "3.0.1"
+num-traits = "0.2.14"
+num-complex = "0.3.1"
+rustfft = "4.0.0"
 
 # sound #
-rand_core = "0.5.1"
-rand_xorshift ="0.2.0"
-cpal = "0.11.0"
-paste = "0.1.4"
+rand_core = "0.6.0"
+rand_xorshift = "0.3.0"
+cpal = "0.13.1"
+paste = "1.0.4"
 
 # cli #
 clap = "2.33.0"

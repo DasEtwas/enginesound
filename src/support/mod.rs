@@ -1,17 +1,37 @@
+use conrod_winit::WinitWindow;
+use glium::glutin::event::Event;
+use glium::glutin::platform::desktop::EventLoopExtDesktop;
+use winit::dpi::PhysicalSize;
+
 pub struct GliumDisplayWinitWrapper(pub glium::Display);
 
 impl GliumDisplayWinitWrapper {
     pub fn get(&self) -> &glium::Display {
         &self.0
     }
+
+    pub fn scale_factor(&self) -> f64 {
+        self.hidpi_factor() as f64
+    }
+
+    pub fn inner_size(&self) -> PhysicalSize<u32> {
+        self.0.gl_window().window().inner_size()
+    }
 }
 
-impl conrod_winit::WinitWindow for GliumDisplayWinitWrapper {
+impl WinitWindow for GliumDisplayWinitWrapper {
     fn get_inner_size(&self) -> Option<(u32, u32)> {
-        self.0.gl_window().get_inner_size().map(Into::into)
+        let s = self.0.gl_window().window().inner_size();
+
+        Some((s.width, s.height))
     }
     fn hidpi_factor(&self) -> f32 {
-        self.0.gl_window().get_hidpi_factor() as _
+        self.0
+            .gl_window()
+            .window()
+            .current_monitor()
+            .map(|m| m.scale_factor())
+            .unwrap_or(1.0) as f32
     }
 }
 
@@ -24,6 +44,7 @@ impl conrod_winit::WinitWindow for GliumDisplayWinitWrapper {
 pub struct EventLoop {
     ui_needs_update: bool,
     last_update: std::time::Instant,
+    events: Vec<Event<'static, ()>>,
 }
 
 impl EventLoop {
@@ -31,14 +52,15 @@ impl EventLoop {
         EventLoop {
             last_update: std::time::Instant::now(),
             ui_needs_update: true,
+            events: vec![],
         }
     }
 
     /// Produce an iterator yielding all available events.
     pub fn next(
         &mut self,
-        events_loop: &mut glium::glutin::EventsLoop,
-    ) -> Vec<glium::glutin::Event> {
+        events_loop: &mut glium::glutin::event_loop::EventLoop<()>,
+    ) -> Vec<glium::glutin::event::Event<'static, ()>> {
         // We don't want to loop any faster than 60 FPS, so wait until it has been at least 16ms
         // since the last yield.
         let last_update = self.last_update;
@@ -49,21 +71,38 @@ impl EventLoop {
         }
 
         // Collect all pending events.
-        let mut events = Vec::new();
-        events_loop.poll_events(|event| events.push(event));
+        self.events.clear();
+        events_loop.run_return(|event, _target, flow| match event {
+            glium::glutin::event::Event::MainEventsCleared => {
+                *flow = glium::glutin::event_loop::ControlFlow::Exit;
+            }
+            e => {
+                if let Some(se) = e.to_static() {
+                    self.events.push(se);
+                }
+                *flow = glium::glutin::event_loop::ControlFlow::Poll;
+            }
+        });
 
         // If there are no events and the `Ui` does not need updating, wait for the next event.
-        if events.is_empty() && !self.ui_needs_update {
-            events_loop.run_forever(|event| {
-                events.push(event);
-                glium::glutin::ControlFlow::Break
+        if self.events.is_empty() && !self.ui_needs_update {
+            events_loop.run_return(|event, _target, flow| match event {
+                glium::glutin::event::Event::MainEventsCleared => {
+                    *flow = glium::glutin::event_loop::ControlFlow::Exit;
+                }
+                e => {
+                    if let Some(se) = e.to_static() {
+                        self.events.push(se);
+                    }
+                    *flow = glium::glutin::event_loop::ControlFlow::Poll;
+                }
             });
         }
 
         self.ui_needs_update = false;
         self.last_update = std::time::Instant::now();
 
-        events
+        std::mem::take(&mut self.events)
     }
 
     /// Notifies the event loop that the `Ui` requires another update whether or not there are any

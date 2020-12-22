@@ -10,6 +10,7 @@ use conrod_core::text::Font;
 use glium::Surface;
 use parking_lot::RwLock;
 use std::sync::Arc;
+use winit::dpi::PhysicalSize;
 
 mod audio;
 mod constants;
@@ -25,8 +26,6 @@ const WINDOW_WIDTH: f64 = 800.0;
 const WINDOW_HEIGHT: f64 = 800.0;
 
 const DEFAULT_CONFIG: &[u8] = include_bytes!("default.esc");
-
-conrod_winit::conversion_fns!();
 
 fn main() {
     let matches = App::new("Engine Sound Generator")
@@ -152,7 +151,7 @@ fn main() {
         };
 
         // this channel is bounded in practice by the channel between the following ExactStreamer of the FFTStreamer and it's channel's capacity (created in crate::audio::init)
-        let (fft_sender, gui_fft_receiver) = crossbeam::channel::bounded(4);
+        let (fft_sender, gui_fft_receiver) = crossbeam_channel::bounded(4);
 
         let mut fft = FFTStreamer::new(
             WATERFALL_WIDTH as usize * 2, /* only half of the spectrum can be used */
@@ -168,12 +167,14 @@ fn main() {
         // GUI
         {
             // Build the window.
-            let mut events_loop = glium::glutin::EventsLoop::new();
-            let window = glium::glutin::WindowBuilder::new()
+            let mut events_loop = glium::glutin::event_loop::EventLoop::new();
+            let window = glium::glutin::window::WindowBuilder::new()
                 .with_title("Engine Sound Generator")
-                .with_dimensions((WINDOW_WIDTH, WINDOW_HEIGHT).into())
-                .with_max_dimensions((WINDOW_WIDTH + 1.0, WINDOW_HEIGHT + 1000.0).into())
-                .with_min_dimensions((WINDOW_WIDTH, WINDOW_HEIGHT).into())
+                .with_inner_size::<PhysicalSize<u32>>((WINDOW_WIDTH, WINDOW_HEIGHT).into())
+                .with_max_inner_size::<PhysicalSize<u32>>(
+                    (WINDOW_WIDTH + 1.0, WINDOW_HEIGHT + 1000.0).into(),
+                )
+                .with_min_inner_size::<PhysicalSize<u32>>((WINDOW_WIDTH, WINDOW_HEIGHT).into())
                 .with_resizable(true);
             let context = glium::glutin::ContextBuilder::new()
                 .with_vsync(true)
@@ -199,14 +200,20 @@ fn main() {
             let mut event_loop = support::EventLoop::new();
             'main: loop {
                 event_loop.needs_update();
-                for event in event_loop.next(&mut events_loop) {
-                    if let Some(event) = convert_event(event.clone(), &display) {
-                        ui.handle_event(event);
+                for event in event_loop.next(&mut events_loop).iter() {
+                    {
+                        use glium::glutin as winit;
+
+                        if let Some(event) =
+                            conrod_winit::v023_convert_event!(event.clone(), &display)
+                        {
+                            ui.handle_event(event);
+                        }
                     }
 
-                    if let glium::glutin::Event::WindowEvent { event, .. } = event {
+                    if let glium::glutin::event::Event::WindowEvent { event, .. } = event {
                         match event {
-                            glium::glutin::WindowEvent::DroppedFile(path) => {
+                            glium::glutin::event::WindowEvent::DroppedFile(path) => {
                                 let path = path.to_str().unwrap_or("invalid UTF-8 in path");
                                 match crate::load_engine(path, sample_rate) {
                                     Ok(new_engine) => {
@@ -221,11 +228,12 @@ fn main() {
                                     }
                                 }
                             }
-                            glium::glutin::WindowEvent::CloseRequested
-                            | glium::glutin::WindowEvent::KeyboardInput {
+                            glium::glutin::event::WindowEvent::CloseRequested
+                            | glium::glutin::event::WindowEvent::KeyboardInput {
                                 input:
-                                    glium::glutin::KeyboardInput {
-                                        virtual_keycode: Some(glium::glutin::VirtualKeyCode::Escape),
+                                    glium::glutin::event::KeyboardInput {
+                                        virtual_keycode:
+                                            Some(glium::glutin::event::VirtualKeyCode::Escape),
                                         ..
                                     },
                                 ..

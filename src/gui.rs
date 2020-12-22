@@ -40,7 +40,7 @@ pub struct Ids {
     pub canvas: widget::Id,
     pub title: widget::Id,
     pub record_button: widget::Id,
-    pub reset_button: widget::Id,
+    pub panic_button: widget::Id,
     pub save_button: widget::Id,
     pub drag_drop_info: widget::Id,
     pub mix_title: widget::Id,
@@ -92,7 +92,7 @@ impl Ids {
             canvas: generator.next(),
             title: generator.next(),
             record_button: generator.next(),
-            reset_button: generator.next(),
+            panic_button: generator.next(),
             save_button: generator.next(),
             drag_drop_info: generator.next(),
             mix_title: generator.next(),
@@ -143,11 +143,11 @@ impl Ids {
 /// Contains the waterfall bitmap
 pub struct GUIState {
     waterfall: [f32; (WATERFALL_WIDTH * WATERFALL_HEIGHT) as usize],
-    input: crossbeam::Receiver<Vec<f32>>,
+    input: crossbeam_channel::Receiver<Vec<f32>>,
 }
 
 impl GUIState {
-    pub fn new(input: crossbeam::Receiver<Vec<f32>>) -> Self {
+    pub fn new(input: crossbeam_channel::Receiver<Vec<f32>>) -> Self {
         GUIState {
             waterfall: [0.07f32; (WATERFALL_WIDTH * WATERFALL_HEIGHT) as usize],
             input,
@@ -335,7 +335,7 @@ pub fn gui(
         }
 
         {
-            let mut reset_sampler_label = String::from("Reset sampler");
+            let mut reset_sampler_label = String::from("Panic!");
 
             if generator.waveguides_dampened {
                 reset_sampler_label.push_str("   !!Resonances dampened!! (change parameters)");
@@ -347,7 +347,8 @@ pub fn gui(
                 .down(DOWN_SPACE)
                 .w(BUTTON_WIDTH)
                 .h(BUTTON_LINE_SIZE)
-                .set(ids.reset_button, ui)
+                .color(Color::Rgba(0.8, 0.1, 0.1, 1.0))
+                .set(ids.panic_button, ui)
             {
                 generator.reset();
             }
@@ -362,12 +363,10 @@ pub fn gui(
                 .h(BUTTON_LINE_SIZE)
                 .set(ids.save_button, ui)
             {
-                let pretty = ron::ser::PrettyConfig {
-                    depth_limit: 6,
-                    separate_tuple_members: true,
-                    enumerate_arrays: true,
-                    ..ron::ser::PrettyConfig::default()
-                };
+                let pretty = ron::ser::PrettyConfig::new()
+                    .with_depth_limit(6)
+                    .with_separate_tuple_members(true)
+                    .with_enumerate_arrays(true);
 
                 match ron::ser::to_string_pretty(&generator.engine, pretty) {
                     Ok(s) => {

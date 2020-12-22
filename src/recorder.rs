@@ -13,14 +13,14 @@ use std::{
 pub struct Recorder {
     /// recorded samples since creation
     len: usize,
-    sender: crossbeam::Sender<Vec<f32>>,
+    sender: crossbeam_channel::Sender<Vec<f32>>,
     running: Arc<AtomicBool>,
     block_lock: Arc<Mutex<()>>,
 }
 
 impl Recorder {
     pub fn new(filename: String, sample_rate: u32) -> Recorder {
-        let (send, recv) = crossbeam::unbounded();
+        let (send, recv) = crossbeam_channel::unbounded();
 
         let ret = Recorder {
             len: 0,
@@ -32,7 +32,12 @@ impl Recorder {
         ret
     }
 
-    fn start(&self, recv: crossbeam::Receiver<Vec<f32>>, filename: String, sample_rate: u32) {
+    fn start(
+        &self,
+        recv: crossbeam_channel::Receiver<Vec<f32>>,
+        filename: String,
+        sample_rate: u32,
+    ) {
         std::thread::spawn({
             let running = self.running.clone();
             let block_lock = self.block_lock.clone();
