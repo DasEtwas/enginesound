@@ -343,9 +343,6 @@ pub fn gui(
                 .set(ids.file_chooser_button, ui)
             {
                 let load_file_path = native_dialog::FileDialog::new()
-                    .set_location(
-                        &std::env::current_dir().expect("Failedt to get current working directory"),
-                    )
                     .add_filter("Engine sound configuration files", &["esc", "es"])
                     .add_filter("All files", &[""])
                     .show_open_single_file()
@@ -404,17 +401,12 @@ pub fn gui(
                     .with_enumerate_arrays(true);
 
                 let name = config_name();
-                let mut path = std::env::current_dir()
-                    .expect("Failed to get current working directory")
-                    .join(name);
 
-                if let Some(new_path) = native_dialog::FileDialog::new()
-                    .set_location(&path)
+                if let Some(path) = native_dialog::FileDialog::new()
+                    .set_filename(&name)
                     .show_save_single_file()
                     .expect("Failed to open file save dialog")
                 {
-                    path = new_path;
-
                     match ron::ser::to_string_pretty(&generator.engine, pretty) {
                         Ok(s) => match File::create(&path) {
                             Ok(mut file) => {
