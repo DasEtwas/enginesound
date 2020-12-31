@@ -40,9 +40,9 @@ pub struct Ids {
     pub canvas: widget::Id,
     pub title: widget::Id,
     pub record_button: widget::Id,
+    pub file_chooser_button: widget::Id,
     pub panic_button: widget::Id,
     pub save_button: widget::Id,
-    pub drag_drop_info: widget::Id,
     pub mix_title: widget::Id,
     pub engine_rpm_slider: widget::Id,
     pub engine_master_volume_slider: widget::Id,
@@ -93,8 +93,8 @@ impl Ids {
             title: generator.next(),
             record_button: generator.next(),
             panic_button: generator.next(),
+            file_chooser_button: generator.next(),
             save_button: generator.next(),
-            drag_drop_info: generator.next(),
             mix_title: generator.next(),
             engine_rpm_slider: generator.next(),
             engine_master_volume_slider: generator.next(),
@@ -335,6 +335,42 @@ pub fn gui(
         }
 
         {
+            for _press in widget::Button::new()
+                .label("Open file")
+                .down(DOWN_SPACE + 2.0)
+                .w(BUTTON_WIDTH)
+                .h(BUTTON_LINE_SIZE)
+                .set(ids.file_chooser_button, ui)
+            {
+                let load_file_path = native_dialog::FileDialog::new()
+                    .set_location(
+                        &std::env::current_dir().expect("Failedt to get current working directory"),
+                    )
+                    .add_filter("Engine sound configuration files", &["esc", "es"])
+                    .add_filter("All files", &[""])
+                    .show_open_single_file()
+                    .unwrap();
+
+                if let Some(load_file_path) = load_file_path.map(|p| p.display().to_string()) {
+                    match crate::load_engine(&load_file_path, sample_rate) {
+                        Ok(new_engine) => {
+                            println!("Successfully loaded engine config \"{}\"", &load_file_path);
+                            generator.engine = new_engine;
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "Failed to load engine config \"{}\": {}",
+                                &load_file_path, e
+                            );
+                        }
+                    }
+                } else {
+                    println!("Cancelled file loading dialog");
+                }
+            }
+        }
+
+        {
             let mut reset_sampler_label = String::from("Panic!");
 
             if generator.waveguides_dampened {
@@ -364,33 +400,41 @@ pub fn gui(
                 .set(ids.save_button, ui)
             {
                 let pretty = ron::ser::PrettyConfig::new()
-                    .with_depth_limit(6)
                     .with_separate_tuple_members(true)
                     .with_enumerate_arrays(true);
 
-                match ron::ser::to_string_pretty(&generator.engine, pretty) {
-                    Ok(s) => {
-                        let name = config_name();
-                        match File::create(&name) {
+                let name = config_name();
+                let mut path = std::env::current_dir()
+                    .expect("Failed to get current working directory")
+                    .join(name);
+
+                if let Some(new_path) = native_dialog::FileDialog::new()
+                    .set_location(&path)
+                    .show_save_single_file()
+                    .expect("Failed to open file save dialog")
+                {
+                    path = new_path;
+
+                    match ron::ser::to_string_pretty(&generator.engine, pretty) {
+                        Ok(s) => match File::create(&path) {
                             Ok(mut file) => {
                                 file.write_all(s.as_bytes()).unwrap();
 
-                                println!("Successfully saved engine config \"{}\"", &name);
+                                println!(
+                                    "Successfully saved engine config \"{}\"",
+                                    &path.display()
+                                );
                             }
                             Err(e) => {
                                 eprintln!("Failed to create file for saving engine config: {}", e)
                             }
-                        }
+                        },
+                        Err(e) => eprintln!("Failed to save engine config: {}", e),
                     }
-                    Err(e) => eprintln!("Failed to save engine config: {}", e),
+                } else {
+                    println!("Cancelled saving");
                 }
             }
-
-            widget::Text::new("Drop a file into the window to load an enginesound config (.esc)")
-                .font_size(12)
-                .down(DOWN_SPACE)
-                .w(ui.window_dim()[0] - MARGIN * 2.0)
-                .set(ids.drag_drop_info, ui);
 
             widget::Text::new("Mix")
                 .font_size(16)

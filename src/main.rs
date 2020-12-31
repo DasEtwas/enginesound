@@ -11,6 +11,7 @@ use glium::Surface;
 use parking_lot::RwLock;
 use std::sync::Arc;
 use winit::dpi::PhysicalSize;
+use winit::platform::windows::WindowBuilderExtWindows;
 
 mod audio;
 mod constants;
@@ -41,6 +42,7 @@ fn main() {
         .arg(Arg::with_name("output_file").short("o").long("output").help("Sets the output .wav file path").default_value_if("headless", None, "output.wav"))
         .arg(Arg::with_name("crossfade").short("f").long("crossfade").help("Crossfades the recording in the middle end-to-start to create a seamless loop, although adjusting the recording's length to the rpm is recommended. The value sets the size of the crossfade, where the final output is decreased in length by crossfade_time/2.").default_value_if("headless", None, "0.00133"))
         .arg(Arg::with_name("samplerate").short("q").long("samplerate").help("Generator sample rate").default_value("48000"))
+        .arg(Arg::with_name("no-drag-drop").short("d").long("no-drag-drop").help("Disabled drag-and-drop support for the window").conflicts_with("headless"))
         .get_matches();
 
     let sample_rate = value_t_or_exit!(matches, "samplerate", u32);
@@ -166,6 +168,8 @@ fn main() {
 
         // GUI
         {
+            let drag_and_drop = !matches.is_present("no-drag-drop");
+
             // Build the window.
             let mut events_loop = glium::glutin::event_loop::EventLoop::new();
             let window = glium::glutin::window::WindowBuilder::new()
@@ -175,7 +179,8 @@ fn main() {
                     (WINDOW_WIDTH + 1.0, WINDOW_HEIGHT + 1000.0).into(),
                 )
                 .with_min_inner_size::<PhysicalSize<u32>>((WINDOW_WIDTH, WINDOW_HEIGHT).into())
-                .with_resizable(true);
+                .with_resizable(true)
+                .with_drag_and_drop(drag_and_drop);
             let context = glium::glutin::ContextBuilder::new()
                 .with_vsync(true)
                 .with_multisampling(4);
@@ -214,17 +219,21 @@ fn main() {
                     if let glium::glutin::event::Event::WindowEvent { event, .. } = event {
                         match event {
                             glium::glutin::event::WindowEvent::DroppedFile(path) => {
-                                let path = path.to_str().unwrap_or("invalid UTF-8 in path");
-                                match crate::load_engine(path, sample_rate) {
-                                    Ok(new_engine) => {
-                                        println!("Successfully loaded engine config \"{}\"", &path);
-                                        generator.write().engine = new_engine;
-                                    }
-                                    Err(e) => {
-                                        eprintln!(
-                                            "Failed to load engine config \"{}\": {}",
-                                            path, e
-                                        );
+                                if let Some(path) = path.to_str() {
+                                    match crate::load_engine(path, sample_rate) {
+                                        Ok(new_engine) => {
+                                            println!(
+                                                "Successfully loaded engine config \"{}\"",
+                                                &path
+                                            );
+                                            generator.write().engine = new_engine;
+                                        }
+                                        Err(e) => {
+                                            eprintln!(
+                                                "Failed to load engine config \"{}\": {}",
+                                                path, e
+                                            );
+                                        }
                                     }
                                 }
                             }

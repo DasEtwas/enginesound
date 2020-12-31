@@ -1,6 +1,6 @@
 [package]
 name = "enginesound"
-version = "1.4.1"
+version = "1.4.2"
 authors = ["https://github.com/DasEtwas/"]
 edition = "2018"
 description = """
@@ -35,6 +35,7 @@ conrod_core = { version = "0.71.0", optional = true }
 conrod_glium = { version = "0.71.0", optional = true }
 conrod_winit = { version = "0.71.0", optional = true }
 winit = "0.23.0"
+native-dialog = "0.5.2"
 
 # fft #
 num-traits = "0.2.14"

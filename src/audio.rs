@@ -1,7 +1,7 @@
 use crate::exactstreamer::ExactStreamer;
 use crate::gen::Generator;
-use cpal::traits::DeviceTrait;
 use cpal::traits::HostTrait;
+use cpal::traits::{DeviceTrait, StreamTrait};
 use cpal::{BufferSize, Host, SampleRate, Stream, StreamConfig};
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -37,7 +37,7 @@ pub fn init(
 
     let stream_config = StreamConfig {
         sample_rate: SampleRate(sample_rate),
-        channels: 1,
+        channels: 2,
         buffer_size: BufferSize::Default,
     };
 
@@ -50,7 +50,18 @@ pub fn init(
                 let mut stream = ExactStreamer::new(GENERATOR_BUFFER_SIZE, device_receiver);
 
                 move |data, _info| {
-                    let _ = stream.fill(data);
+                    let len_2 = data.len() / 2;
+                    let _ = stream.fill(&mut data[len_2..]);
+
+                    // interleave mono data to stereo
+
+                    let mut i = 0;
+                    while i < len_2 {
+                        let lr = data[i + len_2];
+                        data[i * 2] = lr;
+                        data[i * 2 + 1] = lr;
+                        i += 1;
+                    }
                 }
             },
             move |e| {
@@ -58,6 +69,8 @@ pub fn init(
             },
         )
         .expect("Failed to build audio output stream");
+
+    speaker_stream.play().expect("Failed to play stream");
 
     std::thread::spawn({
         move || {
