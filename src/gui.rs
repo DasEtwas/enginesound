@@ -344,7 +344,7 @@ pub fn gui(
             {
                 let load_file_path = native_dialog::FileDialog::new()
                     .add_filter("Engine sound configuration files", &["esc", "es"])
-                    .add_filter("All files", &[""])
+                    .add_filter("All files", &["*"])
                     .show_open_single_file()
                     .unwrap();
 
@@ -404,24 +404,52 @@ pub fn gui(
 
                 if let Some(path) = native_dialog::FileDialog::new()
                     .set_filename(&name)
+                    .add_filter("Engine sound RON file", &["esc", "ron"])
+                    .add_filter("Engine sound JSON file", &["json"])
                     .show_save_single_file()
                     .expect("Failed to open file save dialog")
                 {
-                    match ron::ser::to_string_pretty(&generator.engine, pretty) {
-                        Ok(s) => match File::create(&path) {
-                            Ok(mut file) => {
-                                file.write_all(s.as_bytes()).unwrap();
+                    match path.extension() {
+                        Some(str) if str == "json" => {
+                            match serde_json::to_string_pretty(&generator.engine) {
+                                Ok(s) => match File::create(&path) {
+                                    Ok(mut file) => {
+                                        file.write_all(s.as_bytes()).unwrap();
 
-                                println!(
-                                    "Successfully saved engine config \"{}\"",
-                                    &path.display()
-                                );
+                                        println!(
+                                            "Successfully saved engine config \"{}\"",
+                                            &path.display()
+                                        );
+                                    }
+                                    Err(e) => {
+                                        eprintln!(
+                                            "Failed to create file for saving engine config: {}",
+                                            e
+                                        )
+                                    }
+                                },
+                                Err(e) => eprintln!("Failed to save engine config: {}", e),
                             }
-                            Err(e) => {
-                                eprintln!("Failed to create file for saving engine config: {}", e)
-                            }
+                        }
+                        _ => match ron::ser::to_string_pretty(&generator.engine, pretty) {
+                            Ok(s) => match File::create(&path) {
+                                Ok(mut file) => {
+                                    file.write_all(s.as_bytes()).unwrap();
+
+                                    println!(
+                                        "Successfully saved engine config \"{}\"",
+                                        &path.display()
+                                    );
+                                }
+                                Err(e) => {
+                                    eprintln!(
+                                        "Failed to create file for saving engine config: {}",
+                                        e
+                                    )
+                                }
+                            },
+                            Err(e) => eprintln!("Failed to save engine config: {}", e),
                         },
-                        Err(e) => eprintln!("Failed to save engine config: {}", e),
                     }
                 } else {
                     println!("Cancelled saving");

@@ -14,7 +14,6 @@ gui = ["glium", "conrod_core", "conrod_glium", "conrod_winit"]
 
 [profile.release]
 debug = true
-lto = true
 
 [dependencies]
 # recording #
@@ -25,6 +24,7 @@ chrono = "0.4.19"
 # saving presets #
 serde = { version = "1.0.118", features = ["derive"] }
 ron = "0.6.4"
+serde_json = "1.0.61"
 
 # misc #
 parking_lot = "0.11.1"
