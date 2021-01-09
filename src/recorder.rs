@@ -51,8 +51,8 @@ impl Recorder {
                     WavSpec {
                         channels: 1,
                         sample_rate,
-                        bits_per_sample: 16,
-                        sample_format: SampleFormat::Int,
+                        bits_per_sample: 32,
+                        sample_format: SampleFormat::Float,
                     },
                 ) {
                     Ok(wav_writer) => wav_writer,
@@ -62,14 +62,9 @@ impl Recorder {
                 while running.load(Ordering::Relaxed) {
                     match recv.recv_timeout(Duration::from_secs(4)) {
                         Ok(samples) => {
-                            samples.iter().for_each(|sample| {
-                                wav_writer
-                                    .write_sample(
-                                        (sample.max(-1.0).min(1.0) * f32::from(std::i16::MAX))
-                                            as i16,
-                                    )
-                                    .unwrap()
-                            });
+                            samples
+                                .iter()
+                                .for_each(|sample| wav_writer.write_sample(*sample).unwrap());
                         }
                         Err(_) => break,
                     }
@@ -78,13 +73,9 @@ impl Recorder {
                 println!("Stopped recording, finishing writing WAV..");
 
                 while let Ok(samples) = recv.try_recv() {
-                    samples.iter().for_each(|sample| {
-                        wav_writer
-                            .write_sample(
-                                (sample.max(-1.0).min(1.0) * f32::from(std::i16::MAX)) as i16,
-                            )
-                            .unwrap()
-                    });
+                    samples
+                        .iter()
+                        .for_each(|sample| wav_writer.write_sample(*sample).unwrap());
                 }
 
                 wav_writer.flush().unwrap();
