@@ -1,29 +1,44 @@
-use crate::audio::GENERATOR_BUFFER_SIZE;
 use crate::exactstreamer::ExactStreamer;
-use crate::fft::FFTStreamer;
 use crate::gen::LowPassFilter;
-use crate::gui::{GUIState, WATERFALL_WIDTH};
 use crate::recorder::Recorder;
 use crate::utils::{fix_engine, load_engine, seconds_to_samples};
 use clap::{value_t, value_t_or_exit, App, Arg};
-use conrod_core::text::Font;
-use glium::Surface;
 use parking_lot::RwLock;
 use std::sync::Arc;
+
+#[cfg(feature = "gui")]
+use crate::{
+    audio::GENERATOR_BUFFER_SIZE,
+    fft::FFTStreamer,
+    gui::{GUIState, WATERFALL_WIDTH},
+};
+#[cfg(feature = "gui")]
+use conrod_core::text::Font;
+#[cfg(feature = "gui")]
+use glium::Surface;
+#[cfg(feature = "gui")]
 use winit::dpi::PhysicalSize;
+#[cfg(feature = "gui")]
 use winit::platform::windows::WindowBuilderExtWindows;
 
+#[cfg(feature = "gui")]
 mod audio;
+#[cfg(feature = "gui")]
+mod fft;
+#[cfg(feature = "gui")]
+mod gui;
+#[cfg(feature = "gui")]
+mod support;
+
 mod constants;
 mod exactstreamer;
-mod fft;
 mod gen;
-mod gui;
 mod recorder;
-mod support;
 mod utils;
 
+#[cfg(feature = "gui")]
 const WINDOW_WIDTH: f64 = 800.0;
+#[cfg(feature = "gui")]
 const WINDOW_HEIGHT: f64 = 800.0;
 
 const DEFAULT_CONFIG: &[u8] = include_bytes!("default.esc");
@@ -142,135 +157,142 @@ fn main() {
         recorder.record(output.to_vec());
         recorder.stop_wait();
     } else {
-        let generator = Arc::new(RwLock::new(generator));
-
-        let (audio, fft_receiver) = match audio::init(generator.clone(), sample_rate) {
-            Ok(audio) => audio,
-            Err(e) => {
-                eprintln!("Failed to initialize SDL2 audio: {}", e);
-                std::process::exit(3);
-            }
-        };
-
-        // this channel is bounded in practice by the channel between the following ExactStreamer of the FFTStreamer and it's channel's capacity (created in crate::audio::init)
-        let (fft_sender, gui_fft_receiver) = crossbeam_channel::bounded(4);
-
-        let mut fft = FFTStreamer::new(
-            WATERFALL_WIDTH as usize * 2, /* only half of the spectrum can be used */
-            ExactStreamer::new(GENERATOR_BUFFER_SIZE, fft_receiver),
-            fft_sender,
-        );
-
-        // spawns thread for fft to create the waterfall lines
-        std::thread::spawn(move || {
-            fft.run();
-        });
-
-        // GUI
+        #[cfg(not(gui))]
         {
-            let drag_and_drop = !matches.is_present("no-drag-drop");
+            eprintln!("Headless builds do not supply GUI");
+        }
+        #[cfg(feature = "gui")]
+        {
+            let generator = Arc::new(RwLock::new(generator));
 
-            // Build the window.
-            let mut events_loop = glium::glutin::event_loop::EventLoop::new();
-            let window = glium::glutin::window::WindowBuilder::new()
-                .with_title("Engine Sound Generator")
-                .with_inner_size::<PhysicalSize<u32>>((WINDOW_WIDTH, WINDOW_HEIGHT).into())
-                .with_max_inner_size::<PhysicalSize<u32>>(
-                    (WINDOW_WIDTH + 1.0, WINDOW_HEIGHT + 1000.0).into(),
-                )
-                .with_min_inner_size::<PhysicalSize<u32>>((WINDOW_WIDTH, WINDOW_HEIGHT).into())
-                .with_resizable(true)
-                .with_drag_and_drop(drag_and_drop);
-            let context = glium::glutin::ContextBuilder::new()
-                .with_vsync(true)
-                .with_multisampling(4);
-            let display = glium::Display::new(window, context, &events_loop).unwrap();
+            let (audio, fft_receiver) = match audio::init(generator.clone(), sample_rate) {
+                Ok(audio) => audio,
+                Err(e) => {
+                    eprintln!("Failed to initialize SDL2 audio: {}", e);
+                    std::process::exit(3);
+                }
+            };
 
-            let display = support::GliumDisplayWinitWrapper(display);
+            // this channel is bounded in practice by the channel between the following ExactStreamer of the FFTStreamer and it's channel's capacity (created in crate::audio::init)
+            let (fft_sender, gui_fft_receiver) = crossbeam_channel::bounded(4);
 
-            let mut ui = conrod_core::UiBuilder::new([WINDOW_WIDTH, WINDOW_HEIGHT])
-                .theme(gui::theme())
-                .build();
-            let ids = gui::Ids::new(ui.widget_id_generator());
-
-            ui.fonts.insert(
-                Font::from_bytes(&include_bytes!("../fonts/NotoSans/NotoSans-Regular.ttf")[..])
-                    .unwrap(),
+            let mut fft = FFTStreamer::new(
+                WATERFALL_WIDTH as usize * 2, /* only half of the spectrum can be used */
+                ExactStreamer::new(GENERATOR_BUFFER_SIZE, fft_receiver),
+                fft_sender,
             );
 
-            let mut gui_state = GUIState::new(gui_fft_receiver);
+            // spawns thread for fft to create the waterfall lines
+            std::thread::spawn(move || {
+                fft.run();
+            });
 
-            let mut renderer = conrod_glium::Renderer::new(display.get()).unwrap();
+            // GUI
+            {
+                let drag_and_drop = !matches.is_present("no-drag-drop");
 
-            let mut event_loop = support::EventLoop::new();
-            'main: loop {
-                event_loop.needs_update();
-                for event in event_loop.next(&mut events_loop).iter() {
-                    {
-                        use glium::glutin as winit;
+                // Build the window.
+                let mut events_loop = glium::glutin::event_loop::EventLoop::new();
+                let window = glium::glutin::window::WindowBuilder::new()
+                    .with_title("Engine Sound Generator")
+                    .with_inner_size::<PhysicalSize<u32>>((WINDOW_WIDTH, WINDOW_HEIGHT).into())
+                    .with_max_inner_size::<PhysicalSize<u32>>(
+                        (WINDOW_WIDTH + 1.0, WINDOW_HEIGHT + 1000.0).into(),
+                    )
+                    .with_min_inner_size::<PhysicalSize<u32>>((WINDOW_WIDTH, WINDOW_HEIGHT).into())
+                    .with_resizable(true)
+                    .with_drag_and_drop(drag_and_drop);
+                let context = glium::glutin::ContextBuilder::new()
+                    .with_vsync(true)
+                    .with_multisampling(4);
+                let display = glium::Display::new(window, context, &events_loop).unwrap();
 
-                        if let Some(event) =
-                            conrod_winit::v023_convert_event!(event.clone(), &display)
+                let display = support::GliumDisplayWinitWrapper(display);
+
+                let mut ui = conrod_core::UiBuilder::new([WINDOW_WIDTH, WINDOW_HEIGHT])
+                    .theme(gui::theme())
+                    .build();
+                let ids = gui::Ids::new(ui.widget_id_generator());
+
+                ui.fonts.insert(
+                    Font::from_bytes(&include_bytes!("../fonts/NotoSans/NotoSans-Regular.ttf")[..])
+                        .unwrap(),
+                );
+
+                let mut gui_state = GUIState::new(gui_fft_receiver);
+
+                let mut renderer = conrod_glium::Renderer::new(display.get()).unwrap();
+
+                let mut event_loop = support::EventLoop::new();
+                'main: loop {
+                    event_loop.needs_update();
+                    for event in event_loop.next(&mut events_loop).iter() {
                         {
-                            ui.handle_event(event);
-                        }
-                    }
+                            use glium::glutin as winit;
 
-                    if let glium::glutin::event::Event::WindowEvent { event, .. } = event {
-                        match event {
-                            glium::glutin::event::WindowEvent::DroppedFile(path) => {
-                                if let Some(path) = path.to_str() {
-                                    match crate::load_engine(path, sample_rate) {
-                                        Ok(new_engine) => {
-                                            println!(
-                                                "Successfully loaded engine config \"{}\"",
-                                                &path
-                                            );
-                                            generator.write().engine = new_engine;
-                                        }
-                                        Err(e) => {
-                                            eprintln!(
-                                                "Failed to load engine config \"{}\": {}",
-                                                path, e
-                                            );
+                            if let Some(event) =
+                                conrod_winit::v023_convert_event!(event.clone(), &display)
+                            {
+                                ui.handle_event(event);
+                            }
+                        }
+
+                        if let glium::glutin::event::Event::WindowEvent { event, .. } = event {
+                            match event {
+                                glium::glutin::event::WindowEvent::DroppedFile(path) => {
+                                    if let Some(path) = path.to_str() {
+                                        match crate::load_engine(path, sample_rate) {
+                                            Ok(new_engine) => {
+                                                println!(
+                                                    "Successfully loaded engine config \"{}\"",
+                                                    &path
+                                                );
+                                                generator.write().engine = new_engine;
+                                            }
+                                            Err(e) => {
+                                                eprintln!(
+                                                    "Failed to load engine config \"{}\": {}",
+                                                    path, e
+                                                );
+                                            }
                                         }
                                     }
                                 }
+                                glium::glutin::event::WindowEvent::CloseRequested
+                                | glium::glutin::event::WindowEvent::KeyboardInput {
+                                    input:
+                                        glium::glutin::event::KeyboardInput {
+                                            virtual_keycode:
+                                                Some(glium::glutin::event::VirtualKeyCode::Escape),
+                                            ..
+                                        },
+                                    ..
+                                } => break 'main,
+                                _ => (),
                             }
-                            glium::glutin::event::WindowEvent::CloseRequested
-                            | glium::glutin::event::WindowEvent::KeyboardInput {
-                                input:
-                                    glium::glutin::event::KeyboardInput {
-                                        virtual_keycode:
-                                            Some(glium::glutin::event::VirtualKeyCode::Escape),
-                                        ..
-                                    },
-                                ..
-                            } => break 'main,
-                            _ => (),
                         }
                     }
+
+                    let image_map = gui::gui(
+                        &mut ui.set_widgets(),
+                        &ids,
+                        generator.clone(),
+                        &mut gui_state,
+                        display.get(),
+                    );
+
+                    let primitives = ui.draw();
+
+                    renderer.fill(&display.0, primitives, &image_map);
+                    let mut target = display.0.draw();
+                    target.clear_color(0.0, 0.0, 0.0, 1.0);
+                    renderer.draw(&display.0, &mut target, &image_map).unwrap();
+                    target.finish().unwrap();
                 }
-
-                let image_map = gui::gui(
-                    &mut ui.set_widgets(),
-                    &ids,
-                    generator.clone(),
-                    &mut gui_state,
-                    display.get(),
-                );
-
-                let primitives = ui.draw();
-
-                renderer.fill(&display.0, primitives, &image_map);
-                let mut target = display.0.draw();
-                target.clear_color(0.0, 0.0, 0.0, 1.0);
-                renderer.draw(&display.0, &mut target, &image_map).unwrap();
-                target.finish().unwrap();
             }
-        }
 
-        // audio lives until here
-        std::mem::drop(audio);
+            // audio lives until here
+            std::mem::drop(audio);
+        }
     }
 }

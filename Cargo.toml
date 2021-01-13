@@ -1,6 +1,6 @@
 [package]
 name = "enginesound"
-version = "1.4.2"
+version = "1.5.0"
 authors = ["https://github.com/DasEtwas/"]
 edition = "2018"
 description = """
@@ -50,10 +50,3 @@ paste = "1.0.4"
 
 # cli #
 clap = "2.33.0"
-
-[dev-dependencies]
-criterion = "0.3"
-
-[[bench]]
-name = "bench"
-harness = false
