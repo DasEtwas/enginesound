@@ -18,7 +18,8 @@ use conrod_core::text::Font;
 use glium::Surface;
 #[cfg(feature = "gui")]
 use winit::dpi::PhysicalSize;
-#[cfg(feature = "gui")]
+
+#[cfg(all(feature = "gui", target_os = "windows"))]
 use winit::platform::windows::WindowBuilderExtWindows;
 
 #[cfg(feature = "gui")]
@@ -193,15 +194,22 @@ fn main() {
 
                 // Build the window.
                 let mut events_loop = glium::glutin::event_loop::EventLoop::new();
-                let window = glium::glutin::window::WindowBuilder::new()
+                let mut window = glium::glutin::window::WindowBuilder::new()
                     .with_title("Engine Sound Generator")
                     .with_inner_size::<PhysicalSize<u32>>((WINDOW_WIDTH, WINDOW_HEIGHT).into())
                     .with_max_inner_size::<PhysicalSize<u32>>(
                         (WINDOW_WIDTH + 1.0, WINDOW_HEIGHT + 1000.0).into(),
                     )
                     .with_min_inner_size::<PhysicalSize<u32>>((WINDOW_WIDTH, WINDOW_HEIGHT).into())
-                    .with_resizable(true)
-                    .with_drag_and_drop(drag_and_drop);
+                    .with_resizable(true);
+
+                #[cfg(target_os = "windows")]
+                window = window.with_drag_and_drop(drag_and_drop);
+                #[cfg(not(target_os = "windows"))]
+                if drag_and_drop {
+                    eprintln!("Drag-and-Drop is only supported on windows");
+                }
+
                 let context = glium::glutin::ContextBuilder::new()
                     .with_vsync(true)
                     .with_multisampling(4);
