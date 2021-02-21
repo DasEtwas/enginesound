@@ -1,6 +1,6 @@
 [package]
 name = "enginesound"
-version = "1.5.1"
+version = "1.5.2"
 authors = ["https://github.com/DasEtwas/"]
 edition = "2018"
 description = """

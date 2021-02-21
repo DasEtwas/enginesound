@@ -204,7 +204,9 @@ fn main() {
                     .with_resizable(true);
 
                 #[cfg(target_os = "windows")]
-                window = window.with_drag_and_drop(drag_and_drop);
+                {
+                    window = window.with_drag_and_drop(drag_and_drop);
+                }
                 #[cfg(not(target_os = "windows"))]
                 if drag_and_drop {
                     eprintln!("Drag-and-Drop is only supported on windows");
