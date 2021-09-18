@@ -91,6 +91,11 @@ volume = 0.5                                  // 50%
 enginesound.exe -h -c config_file.esc -o output_file.wav -f $fade_length -l $length -w $warmup -r $rpm -v $volume
 ```
 
+## Building
+
+On Ubuntu, these dependencies must be installed for the crate to compile (thanks, [leosh64](https://github.com/leosh64)):
+`sudo apt-get install libasound2-dev libxcb-shape0-dev libxcb-xfixes0-dev`
+
 ## Licensing
 
 MIT License
