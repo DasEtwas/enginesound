@@ -64,7 +64,7 @@ fn main() {
     let sample_rate = value_t_or_exit!(matches, "samplerate", u32);
 
     let mut engine = match matches.value_of("config") {
-        Some(path) => match load_engine(path, sample_rate) {
+        Some(path) => match load_engine(path, sample_rate, path.ends_with("json")) {
             Ok(engine) => {
                 println!("Successfully loaded config \"{}\"", path);
                 engine
@@ -251,7 +251,11 @@ fn main() {
                             match event {
                                 glium::glutin::event::WindowEvent::DroppedFile(path) => {
                                     if let Some(path) = path.to_str() {
-                                        match crate::load_engine(path, sample_rate) {
+                                        match crate::load_engine(
+                                            path,
+                                            sample_rate,
+                                            path.ends_with("json"),
+                                        ) {
                                             Ok(new_engine) => {
                                                 println!(
                                                     "Successfully loaded engine config \"{}\"",

@@ -7,6 +7,7 @@ use conrod_core::{
     *,
 };
 use parking_lot::RwLock;
+use std::path::PathBuf;
 use std::{fs::File, io::Write, sync::Arc};
 
 // must be 2^n
@@ -144,6 +145,9 @@ impl Ids {
 pub struct GUIState {
     waterfall: [f32; (WATERFALL_WIDTH * WATERFALL_HEIGHT) as usize],
     input: crossbeam_channel::Receiver<Vec<f32>>,
+    recording_save_path: Option<PathBuf>,
+    config_save_path: Option<PathBuf>,
+    config_load_path: Option<PathBuf>,
 }
 
 impl GUIState {
@@ -151,6 +155,9 @@ impl GUIState {
         GUIState {
             waterfall: [0.07f32; (WATERFALL_WIDTH * WATERFALL_HEIGHT) as usize],
             input,
+            recording_save_path: None,
+            config_save_path: None,
+            config_load_path: None,
         }
     }
 
@@ -326,12 +333,21 @@ pub fn gui(
                 match &mut generator.recorder {
                     None => {
                         let rec_name = recording_name();
-                        if let Some(save_path) = native_dialog::FileDialog::new()
+
+                        let mut dialog = native_dialog::FileDialog::new()
                             .set_filename(&rec_name)
-                            .add_filter("MONO Wave Audio file", &["wav"])
+                            .add_filter("MONO Wave Audio file", &["wav"]);
+
+                        if let Some(recording_save_path) = &gui_state.recording_save_path {
+                            dialog = dialog.set_location(recording_save_path);
+                        }
+
+                        if let Some(save_path) = dialog
                             .show_save_single_file()
                             .expect("Failed to open file save dialog")
                         {
+                            gui_state.recording_save_path =
+                                save_path.parent().map(|p| p.to_owned());
                             generator.recorder = Some(Recorder::new(save_path, sample_rate));
                         } else {
                             println!("Aborted recording");
@@ -352,23 +368,32 @@ pub fn gui(
                 .h(BUTTON_LINE_SIZE)
                 .set(ids.file_chooser_button, ui)
             {
-                let load_file_path = native_dialog::FileDialog::new()
+                let mut dialog = native_dialog::FileDialog::new()
                     .add_filter("Engine sound configuration files", &["esc", "es"])
-                    .add_filter("All files", &["*"])
-                    .show_open_single_file()
-                    .unwrap();
+                    .add_filter("All files", &["*"]);
 
-                if let Some(load_file_path) = load_file_path.map(|p| p.display().to_string()) {
-                    match crate::load_engine(&load_file_path, sample_rate) {
+                if let Some(config_load_path) = &gui_state.config_load_path {
+                    dialog = dialog.set_location(config_load_path);
+                }
+
+                let load_file_path = dialog.show_open_single_file().unwrap();
+
+                if let Some(load_file_path) = load_file_path {
+                    gui_state.config_load_path = load_file_path.parent().map(|p| p.to_owned());
+
+                    let string_path = load_file_path.display().to_string();
+
+                    match crate::load_engine(
+                        &string_path,
+                        sample_rate,
+                        string_path.ends_with("json"),
+                    ) {
                         Ok(new_engine) => {
-                            println!("Successfully loaded engine config \"{}\"", &load_file_path);
+                            println!("Successfully loaded engine config \"{}\"", &string_path);
                             generator.engine = new_engine;
                         }
                         Err(e) => {
-                            eprintln!(
-                                "Failed to load engine config \"{}\": {}",
-                                &load_file_path, e
-                            );
+                            eprintln!("Failed to load engine config \"{}\": {}", &string_path, e);
                         }
                     }
                 } else {
@@ -393,6 +418,7 @@ pub fn gui(
                 .color(Color::Rgba(0.8, 0.1, 0.1, 1.0))
                 .set(ids.panic_button, ui)
             {
+                generator.volume = generator.volume.min(0.01);
                 generator.reset();
             }
         }
@@ -412,13 +438,21 @@ pub fn gui(
 
                 let name = config_name();
 
-                if let Some(path) = native_dialog::FileDialog::new()
+                let mut dialog = native_dialog::FileDialog::new()
                     .set_filename(&name)
                     .add_filter("Engine sound RON file", &["esc", "ron"])
-                    .add_filter("Engine sound JSON file", &["json"])
+                    .add_filter("Engine sound JSON file", &["json"]);
+
+                if let Some(config_save_path) = &gui_state.config_save_path {
+                    dialog = dialog.set_location(config_save_path);
+                }
+
+                if let Some(path) = dialog
                     .show_save_single_file()
                     .expect("Failed to open file save dialog")
                 {
+                    gui_state.config_save_path = path.parent().map(|p| p.to_owned());
+
                     match path.extension() {
                         Some(str) if str == "json" => {
                             match serde_json::to_string_pretty(&generator.engine) {

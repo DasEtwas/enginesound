@@ -26,15 +26,27 @@ pub fn samples_to_distance(samples: usize, sample_rate: u32) -> f32 {
     samples_to_seconds(samples, sample_rate) * SPEED_OF_SOUND
 }
 
-pub(crate) fn load_engine(path: &str, sample_rate: u32) -> Result<Engine, String> {
+pub(crate) fn load_engine(path: &str, sample_rate: u32, json: bool) -> Result<Engine, String> {
     match File::open(path) {
-        Ok(file) => match ron::de::from_reader::<_, Engine>(file) {
-            Ok(mut engine) => {
-                fix_engine(&mut engine, sample_rate);
-                Ok(engine)
+        Ok(file) => {
+            if json {
+                match serde_json::de::from_reader::<_, Engine>(file) {
+                    Ok(mut engine) => {
+                        fix_engine(&mut engine, sample_rate);
+                        Ok(engine)
+                    }
+                    Err(e) => Err(format!("Failed to load JSON config \"{}\": {}", &path, e)),
+                }
+            } else {
+                match ron::de::from_reader::<_, Engine>(file) {
+                    Ok(mut engine) => {
+                        fix_engine(&mut engine, sample_rate);
+                        Ok(engine)
+                    }
+                    Err(e) => Err(format!("Failed to load RON config \"{}\": {}", &path, e)),
+                }
             }
-            Err(e) => Err(format!("Failed to load config \"{}\": {}", &path, e)),
-        },
+        }
         Err(e) => Err(format!("Failed to open file \"{}\": {}", &path, e)),
     }
 }
