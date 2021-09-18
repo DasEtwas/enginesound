@@ -1,5 +1,6 @@
 use hound::{SampleFormat, WavSpec};
 use parking_lot::Mutex;
+use std::path::PathBuf;
 use std::{
     fs::File,
     io::BufWriter,
@@ -19,7 +20,7 @@ pub struct Recorder {
 }
 
 impl Recorder {
-    pub fn new(filename: String, sample_rate: u32) -> Recorder {
+    pub fn new(file: PathBuf, sample_rate: u32) -> Recorder {
         let (send, recv) = crossbeam_channel::unbounded();
 
         let ret = Recorder {
@@ -28,16 +29,11 @@ impl Recorder {
             running: Arc::new(AtomicBool::new(true)),
             block_lock: Arc::new(Mutex::new(())),
         };
-        ret.start(recv, filename, sample_rate);
+        ret.start(recv, file, sample_rate);
         ret
     }
 
-    fn start(
-        &self,
-        recv: crossbeam_channel::Receiver<Vec<f32>>,
-        filename: String,
-        sample_rate: u32,
-    ) {
+    fn start(&self, recv: crossbeam_channel::Receiver<Vec<f32>>, file: PathBuf, sample_rate: u32) {
         std::thread::spawn({
             let running = self.running.clone();
             let block_lock = self.block_lock.clone();
@@ -45,7 +41,7 @@ impl Recorder {
                 let lock = block_lock.lock();
 
                 let mut wav_writer = match hound::WavWriter::new(
-                    BufWriter::new(File::create(filename.as_str()).unwrap_or_else(|e| {
+                    BufWriter::new(File::create(&file).unwrap_or_else(|e| {
                         panic!("Failed to create/open a file for writing the WAV: {}", e)
                     })),
                     WavSpec {
@@ -82,7 +78,7 @@ impl Recorder {
 
                 println!(
                     "Done writing WAV to File \"{}\" (wrote {:.3} sec)",
-                    filename,
+                    file.to_str().unwrap_or("<invalid UTF-8>"),
                     wav_writer.len() as f32 / sample_rate as f32
                 );
 

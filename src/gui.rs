@@ -325,7 +325,17 @@ pub fn gui(
                 let sample_rate = sample_rate;
                 match &mut generator.recorder {
                     None => {
-                        generator.recorder = Some(Recorder::new(recording_name(), sample_rate));
+                        let rec_name = recording_name();
+                        if let Some(save_path) = native_dialog::FileDialog::new()
+                            .set_filename(&rec_name)
+                            .add_filter("MONO Wave Audio file", &["wav"])
+                            .show_save_single_file()
+                            .expect("Failed to open file save dialog")
+                        {
+                            generator.recorder = Some(Recorder::new(save_path, sample_rate));
+                        } else {
+                            println!("Aborted recording");
+                        }
                     }
                     Some(recorder) => {
                         recorder.stop();

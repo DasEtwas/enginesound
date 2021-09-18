@@ -150,7 +150,7 @@ fn main() {
             }
         }
 
-        let mut recorder = Recorder::new(output_filename.to_owned(), sample_rate);
+        let mut recorder = Recorder::new(output_filename.into(), sample_rate);
 
         println!("Started recording to \"{}\"", output_filename);
 
@@ -198,7 +198,7 @@ fn main() {
                     .with_title("Engine Sound Generator")
                     .with_inner_size::<PhysicalSize<u32>>((WINDOW_WIDTH, WINDOW_HEIGHT).into())
                     .with_max_inner_size::<PhysicalSize<u32>>(
-                        (WINDOW_WIDTH + 1.0, WINDOW_HEIGHT + 1000.0).into(),
+                        (WINDOW_WIDTH, WINDOW_HEIGHT + 1000.0).into(),
                     )
                     .with_min_inner_size::<PhysicalSize<u32>>((WINDOW_WIDTH, WINDOW_HEIGHT).into())
                     .with_resizable(true);
